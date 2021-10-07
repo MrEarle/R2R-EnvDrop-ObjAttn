@@ -3,3 +3,8 @@
 *.zip
 /r2r_src/.idea
 /img_features
+.vscode
+build/
+snap/
+**data/
+metadata_parser
