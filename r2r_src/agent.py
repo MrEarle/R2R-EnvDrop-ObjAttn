@@ -50,7 +50,9 @@ class BaseAgent(object):
         return globals()[name + "Agent"]
 
     def test(self, iters=None, **kwargs):
-        self.env.reset_epoch(shuffle=(iters is not None))  # If iters is not none, shuffle the env batch
+        self.env.reset_epoch(
+            shuffle=(iters is not None)
+        )  # If iters is not none, shuffle the env batch
         self.losses = []
         self.results = {}
         # We rely on env showing the entire batch before repeating anything
@@ -98,27 +100,46 @@ class Seq2SeqAgent(BaseAgent):
         # Models
         enc_hidden_size = args.rnn_dim // 2 if args.bidir else args.rnn_dim
         self.encoder = model.EncoderLSTM(
-            tok.vocab_size(), args.wemb, enc_hidden_size, padding_idx, args.dropout, bidirectional=args.bidir
+            tok.vocab_size(),
+            args.wemb,
+            enc_hidden_size,
+            padding_idx,
+            args.dropout,
+            bidirectional=args.bidir,
         ).cuda()
         self.decoder = model.AttnDecoderLSTM(
-            args.aemb, args.rnn_dim, args.dropout, feature_size=self.feature_size + args.angle_feat_size
+            args.aemb,
+            args.rnn_dim,
+            args.dropout,
+            feature_size=self.feature_size + args.angle_feat_size,
         ).cuda()
         self.critic = model.Critic().cuda()
         self.models = (self.encoder, self.decoder, self.critic)
 
+        print("Listener: Done Instantiating Model. Initializing Optimizers", flush=True)
         # Optimizers
         self.encoder_optimizer = args.optimizer(self.encoder.parameters(), lr=args.lr)
         self.decoder_optimizer = args.optimizer(self.decoder.parameters(), lr=args.lr)
         self.critic_optimizer = args.optimizer(self.critic.parameters(), lr=args.lr)
-        self.optimizers = (self.encoder_optimizer, self.decoder_optimizer, self.critic_optimizer)
+        self.optimizers = (
+            self.encoder_optimizer,
+            self.decoder_optimizer,
+            self.critic_optimizer,
+        )
 
+        print("Listener: Done Instantiating Optimizers. Initializing Loss", flush=True)
         # Evaluations
         self.losses = []
-        self.criterion = nn.CrossEntropyLoss(ignore_index=args.ignoreid, size_average=False)
+        self.criterion = nn.CrossEntropyLoss(
+            ignore_index=args.ignoreid, size_average=False
+        )
 
+        print("Listener: Done Instantiating Loss. Initializing Logs", flush=True)
         # Logs
-        sys.stdout.flush()
+        print("Listener: Flushed", flush=True)
         self.logs = defaultdict(list)
+        print("Listener: Done Instantiating Logs. Listener Initialized", flush=True)
+        sys.stdout.flush()
 
     def _sort_batch(self, obs):
         """Extract instructions from a list of observations and sort by descending
@@ -134,7 +155,9 @@ class Seq2SeqAgent(BaseAgent):
         # Sort sequences by lengths
         seq_lengths, perm_idx = seq_lengths.sort(0, True)  # True -> descending
         sorted_tensor = seq_tensor[perm_idx]
-        mask = (sorted_tensor == padding_idx)[:, : seq_lengths[0]]  # seq_lengths[0] is the Maximum length
+        mask = (sorted_tensor == padding_idx)[
+            :, : seq_lengths[0]
+        ]  # seq_lengths[0] is the Maximum length
 
         return (
             Variable(sorted_tensor, requires_grad=False).long().cuda(),
@@ -162,7 +185,8 @@ class Seq2SeqAgent(BaseAgent):
     def _feature_variable(self, obs):
         """Extract precomputed features into variable."""
         features = np.empty(
-            (len(obs), args.views, self.feature_size + args.angle_feat_size), dtype=np.float32
+            (len(obs), args.views, self.feature_size + args.angle_feat_size),
+            dtype=np.float32,
         )
         for i, ob in enumerate(obs):
             features[i, :, :] = ob["feature"]  # Image feat
@@ -172,7 +196,8 @@ class Seq2SeqAgent(BaseAgent):
         candidate_leng = [len(ob["candidate"]) + 1 for ob in obs]  # +1 is for the end
         max_cand_len = max(candidate_leng)
         candidate_feat = np.zeros(
-            (len(obs), max_cand_len, self.feature_size + args.angle_feat_size), dtype=np.float32
+            (len(obs), max_cand_len, self.feature_size + args.angle_feat_size),
+            dtype=np.float32,
         )
         angle_feats = np.zeros((len(obs), max_cand_len, args.angle_feat_size))
         # Note: The candidate_feat at len(ob['candidate']) is the feature for the END
@@ -216,7 +241,9 @@ class Seq2SeqAgent(BaseAgent):
                         a[i] = k
                         break
                 else:  # Stop here
-                    assert ob["teacher"] == ob["viewpoint"]  # The teacher action should be "STAY HERE"
+                    assert (
+                        ob["teacher"] == ob["viewpoint"]
+                    )  # The teacher action should be "STAY HERE"
                     a[i] = len(ob["candidate"])
         return torch.from_numpy(a).cuda()
 
@@ -228,12 +255,16 @@ class Seq2SeqAgent(BaseAgent):
 
         def take_action(i, idx, name):
             if type(name) is int:  # Go to the next view
-                self.env.env.sims[idx].makeAction(name, 0, 0)
+                self.env.env.sims[idx].makeAction([name], [0], [0])
             else:  # Adjust
-                self.env.env.sims[idx].makeAction(*self.env_actions[name])
-            state = self.env.env.sims[idx].getState()
+                self.env.env.sims[idx].makeAction(
+                    *([x] for x in self.env_actions[name])
+                )
+            state = self.env.env.sims[idx].getState()[0]
             if traj is not None:
-                traj[i]["path"].append((state.location.viewpointId, state.heading, state.elevation))
+                traj[i]["path"].append(
+                    (state.location.viewpointId, state.heading, state.elevation)
+                )
 
         if perm_idx is None:
             perm_idx = range(len(perm_obs))
@@ -251,12 +282,14 @@ class Seq2SeqAgent(BaseAgent):
                 while src_level > trg_level:  # Tune down
                     take_action(i, idx, "down")
                     src_level -= 1
-                while self.env.env.sims[idx].getState().viewIndex != trg_point:  # Turn right until the target
+                while (
+                    self.env.env.sims[idx].getState()[0].viewIndex != trg_point
+                ):  # Turn right until the target
                     take_action(i, idx, "right")
                 assert (
                     select_candidate["viewpointId"]
                     == self.env.env.sims[idx]
-                    .getState()
+                    .getState()[0]
                     .navigableLocations[select_candidate["idx"]]
                     .viewpointId
                 )
@@ -287,13 +320,19 @@ class Seq2SeqAgent(BaseAgent):
             noise = self.decoder.drop_env(torch.ones(self.feature_size).cuda())
             batch = self.env.batch.copy()
             speaker.env = self.env
-            insts = speaker.infer_batch(featdropmask=noise)  # Use the same drop mask in speaker
+            insts = speaker.infer_batch(
+                featdropmask=noise
+            )  # Use the same drop mask in speaker
 
             # Create fake environments with the generated instruction
-            boss = np.ones((batch_size, 1), np.int64) * self.tok.word_to_index["<BOS>"]  # First word is <BOS>
+            boss = (
+                np.ones((batch_size, 1), np.int64) * self.tok.word_to_index["<BOS>"]
+            )  # First word is <BOS>
             insts = np.concatenate((boss, insts), 1)
             for i, (datum, inst) in enumerate(zip(batch, insts)):
-                if inst[-1] != self.tok.word_to_index["<PAD>"]:  # The inst is not ended!
+                if (
+                    inst[-1] != self.tok.word_to_index["<PAD>"]
+                ):  # The inst is not ended!
                     inst[-1] = self.tok.word_to_index["<EOS>"]
                 datum.pop("instructions")
                 datum.pop("instr_encoding")
@@ -330,12 +369,17 @@ class Seq2SeqAgent(BaseAgent):
 
         # Init the reward shaping
         last_dist = np.zeros(batch_size, np.float32)
-        for i, ob in enumerate(perm_obs):  # The init distance from the view point to the target
+        for i, ob in enumerate(
+            perm_obs
+        ):  # The init distance from the view point to the target
             last_dist[i] = ob["distance"]
 
         # Record starting point
         traj = [
-            {"instr_id": ob["instr_id"], "path": [(ob["viewpoint"], ob["heading"], ob["elevation"])]}
+            {
+                "instr_id": ob["instr_id"],
+                "path": [(ob["viewpoint"], ob["heading"], ob["elevation"])],
+            }
             for ob in perm_obs
         ]
 
@@ -343,7 +387,9 @@ class Seq2SeqAgent(BaseAgent):
         visited = [set() for _ in perm_obs]
 
         # Initialization the tracking state
-        ended = np.array([False] * batch_size)  # Indices match permuation of the model, not env
+        ended = np.array(
+            [False] * batch_size
+        )  # Indices match permuation of the model, not env
 
         # Init the logs
         rewards = []
@@ -356,7 +402,13 @@ class Seq2SeqAgent(BaseAgent):
         h1 = h_t
         for t in range(self.episode_len):
 
-            input_a_t, f_t, candidate_feat, angle_feats, candidate_leng = self.get_input_feat(perm_obs)
+            (
+                input_a_t,
+                f_t,
+                candidate_feat,
+                angle_feats,
+                candidate_leng,
+            ) = self.get_input_feat(perm_obs)
             if speaker is not None:  # Apply the env drop mask to the feat
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
@@ -412,7 +464,7 @@ class Seq2SeqAgent(BaseAgent):
                 a_t = c.sample().detach()
                 policy_log_probs.append(c.log_prob(a_t))
             else:
-                print(self.feedback)
+                print(self.feedback, flush=True)
                 sys.exit("Invalid feedback option")
 
             # Prepare environment action
@@ -420,7 +472,9 @@ class Seq2SeqAgent(BaseAgent):
             cpu_a_t = a_t.cpu().numpy()
             for i, next_id in enumerate(cpu_a_t):
                 if (
-                    next_id == (candidate_leng[i] - 1) or next_id == args.ignoreid or ended[i]
+                    next_id == (candidate_leng[i] - 1)
+                    or next_id == args.ignoreid
+                    or ended[i]
                 ):  # The last action is <end>
                     cpu_a_t[i] = -1  # Change the <end> and ignore action to -1
 
@@ -467,12 +521,22 @@ class Seq2SeqAgent(BaseAgent):
 
         if train_rl:
             # Last action in A2C
-            input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(perm_obs)
+            input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(
+                perm_obs
+            )
             if speaker is not None:
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
             last_h_, _, _, _ = self.decoder(
-                input_a_t, f_t, candidate_feat, h_t, h1, c_t, ctx, ctx_mask, speaker is not None
+                input_a_t,
+                f_t,
+                candidate_feat,
+                h_t,
+                h1,
+                c_t,
+                ctx,
+                ctx_mask,
+                speaker is not None,
             )
             rl_loss = 0.0
 
@@ -481,9 +545,13 @@ class Seq2SeqAgent(BaseAgent):
             last_value__ = self.critic(
                 last_h_
             ).detach()  # The value esti of the last state, remove the grad for safety
-            discount_reward = np.zeros(batch_size, np.float32)  # The inital reward is zero
+            discount_reward = np.zeros(
+                batch_size, np.float32
+            )  # The inital reward is zero
             for i in range(batch_size):
-                if not ended[i]:  # If the action is not ended, use the value function as the last reward
+                if not ended[
+                    i
+                ]:  # If the action is not ended, use the value function as the last reward
                     discount_reward[i] = last_value__[i]
 
             length = len(rewards)
@@ -521,10 +589,14 @@ class Seq2SeqAgent(BaseAgent):
         if train_ml is not None:
             self.loss += ml_loss * train_ml / batch_size
 
-        if type(self.loss) is int:  # For safety, it will be activated if no losses are added
+        if (
+            type(self.loss) is int
+        ):  # For safety, it will be activated if no losses are added
             self.losses.append(0.0)
         else:
-            self.losses.append(self.loss.item() / self.episode_len)  # This argument is useless.
+            self.losses.append(
+                self.loss.item() / self.episode_len
+            )  # This argument is useless.
 
         return traj
 
@@ -603,7 +675,9 @@ class Seq2SeqAgent(BaseAgent):
         ]  # -95 is the start point
         visited = [set() for _ in range(batch_size)]
         finished = [set() for _ in range(batch_size)]
-        graphs = [utils.FloydGraph() for _ in range(batch_size)]  # For the navigation path
+        graphs = [
+            utils.FloydGraph() for _ in range(batch_size)
+        ]  # For the navigation path
         ended = np.array([False] * batch_size)
 
         # Dijk Algorithm
@@ -637,7 +711,9 @@ class Seq2SeqAgent(BaseAgent):
                             ended[i] = True
 
             # Gather the running state in the batch
-            h_ts, h1s, c_ts = zip(*(idXstate[1]["running_state"] for idXstate in smallest_idXstate))
+            h_ts, h1s, c_ts = zip(
+                *(idXstate[1]["running_state"] for idXstate in smallest_idXstate)
+            )
             h_t, h1, c_t = torch.stack(h_ts), torch.stack(h1s), torch.stack(c_ts)
 
             # Recover the env and gather the feature
@@ -646,7 +722,7 @@ class Seq2SeqAgent(BaseAgent):
                 scan = results[i]["scan"]
                 from_viewpoint, heading, elevation = state["location"]
                 self.env.env.sims[i].newEpisode(
-                    scan, next_viewpoint, heading, elevation
+                    [scan], [next_viewpoint], [heading], [elevation]
                 )  # Heading, elevation is not used in panoramic
             obs = self.env._get_obs()
 
@@ -661,7 +737,9 @@ class Seq2SeqAgent(BaseAgent):
                         dis = self.env.distances[ob["scan"]][viewpoint][next_viewpoint]
                         graphs[i].add_edge(viewpoint, next_viewpoint, dis)
                     graphs[i].update(viewpoint)
-                results[i]["dijk_path"].extend(graphs[i].path(results[i]["dijk_path"][-1], viewpoint))
+                results[i]["dijk_path"].extend(
+                    graphs[i].path(results[i]["dijk_path"][-1], viewpoint)
+                )
 
             input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(obs)
 
@@ -682,9 +760,13 @@ class Seq2SeqAgent(BaseAgent):
                 current_state_id, current_state = smallest_idXstate[i]
                 old_viewpoint, from_action = decompose_state_id(current_state_id)
                 assert ob["viewpoint"] == current_state["next_viewpoint"]
-                if from_action == -1 or ended[i]:  # If the action is <end> or the batch is ended, skip it
+                if (
+                    from_action == -1 or ended[i]
+                ):  # If the action is <end> or the batch is ended, skip it
                     continue
-                for j in range(len(ob["candidate"]) + 1):  # +1 to include the <end> action
+                for j in range(
+                    len(ob["candidate"]) + 1
+                ):  # +1 to include the <end> action
                     # score + log_prob[action]
                     modified_log_prob = log_probs[i][j].detach().cpu().item()
                     new_score = current_state["score"] + modified_log_prob
@@ -697,16 +779,24 @@ class Seq2SeqAgent(BaseAgent):
                         location = (next_viewpoint, heading, elevation)
                     else:  # The end action
                         next_id = make_state_id(current_viewpoint, -1)  # action is -1
-                        next_viewpoint = current_viewpoint  # next viewpoint is still here
+                        next_viewpoint = (
+                            current_viewpoint  # next viewpoint is still here
+                        )
                         location = (current_viewpoint, ob["heading"], ob["elevation"])
 
-                    if next_id not in id2state[i] or new_score > id2state[i][next_id]["score"]:
+                    if (
+                        next_id not in id2state[i]
+                        or new_score > id2state[i][next_id]["score"]
+                    ):
                         id2state[i][next_id] = {
                             "next_viewpoint": next_viewpoint,
                             "location": location,
                             "running_state": (h_t[i], h1[i], c_t[i]),
                             "from_state_id": current_state_id,
-                            "feature": (f_t[i].detach().cpu(), candidate_feat[i][j].detach().cpu()),
+                            "feature": (
+                                f_t[i].detach().cpu(),
+                                candidate_feat[i][j].detach().cpu(),
+                            ),
                             "score": new_score,
                             "scores": current_state["scores"] + [modified_log_prob],
                             "actions": current_state["actions"] + [len(candidate) + 1],
@@ -804,8 +894,12 @@ class Seq2SeqAgent(BaseAgent):
                 assert len(path["trajectory"]) == (len(path["visual_feature"]) + 1)
                 lengths.append(len(path["visual_feature"]))
             max_len = max(lengths)
-            img_feats = torch.zeros(num_paths, max_len, 36, self.feature_size + args.angle_feat_size)
-            can_feats = torch.zeros(num_paths, max_len, self.feature_size + args.angle_feat_size)
+            img_feats = torch.zeros(
+                num_paths, max_len, 36, self.feature_size + args.angle_feat_size
+            )
+            can_feats = torch.zeros(
+                num_paths, max_len, self.feature_size + args.angle_feat_size
+            )
             for j, path in enumerate(result["paths"]):
                 for k, feat in enumerate(path["visual_feature"]):
                     img_feat, can_feat = feat
@@ -823,7 +917,9 @@ class Seq2SeqAgent(BaseAgent):
             )
             for j, path in enumerate(result["paths"]):
                 path.pop("visual_feature")
-                path["speaker_scores"] = -speaker_scores[j].detach().cpu().numpy()[: seq_lengths[j]]
+                path["speaker_scores"] = (
+                    -speaker_scores[j].detach().cpu().numpy()[: seq_lengths[j]]
+                )
         return results
 
     def beam_search_test(self, speaker):
@@ -952,7 +1048,7 @@ class Seq2SeqAgent(BaseAgent):
             model_keys = set(state.keys())
             load_keys = set(states[name]["state_dict"].keys())
             if model_keys != load_keys:
-                print("NOTICE: DIFFERENT KEYS IN THE LISTEREN")
+                print("NOTICE: DIFFERENT KEYS IN THE LISTEREN", flush=True)
             state.update(states[name]["state_dict"])
             model.load_state_dict(state)
             if args.loadOptim:

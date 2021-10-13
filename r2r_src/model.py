@@ -26,7 +26,7 @@ class EncoderLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.drop = nn.Dropout(p=dropout_ratio)
         if bidirectional:
-            print("Using Bidir in EncoderLSTM")
+            print("Using Bidir in EncoderLSTM", flush=True)
         self.num_directions = 2 if bidirectional else 1
         self.num_layers = num_layers
         self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx)
@@ -39,17 +39,23 @@ class EncoderLSTM(nn.Module):
             dropout=dropout_ratio,
             bidirectional=bidirectional,
         )
-        self.encoder2decoder = nn.Linear(hidden_size * self.num_directions, hidden_size * self.num_directions)
+        self.encoder2decoder = nn.Linear(
+            hidden_size * self.num_directions, hidden_size * self.num_directions
+        )
 
     def init_state(self, inputs):
         """Initialize to zero cell states and hidden states."""
         batch_size = inputs.size(0)
         h0 = Variable(
-            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size),
+            torch.zeros(
+                self.num_layers * self.num_directions, batch_size, self.hidden_size
+            ),
             requires_grad=False,
         )
         c0 = Variable(
-            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size),
+            torch.zeros(
+                self.num_layers * self.num_directions, batch_size, self.hidden_size
+            ),
             requires_grad=False,
         )
 
@@ -87,7 +93,11 @@ class EncoderLSTM(nn.Module):
         if args.zero_init:
             return ctx, torch.zeros_like(decoder_init), torch.zeros_like(c_t)
         else:
-            return ctx, decoder_init, c_t  # (batch, seq_len, hidden_size*num_directions)
+            return (
+                ctx,
+                decoder_init,
+                c_t,
+            )  # (batch, seq_len, hidden_size*num_directions)
             # (batch, hidden_size)
 
 
@@ -122,7 +132,9 @@ class SoftDotAttention(nn.Module):
         if mask is not None:
             # -Inf masking prior to the softmax
             attn.masked_fill_(mask, -float("inf"))
-        attn = self.sm(attn)  # There will be a bug here, but it's actually a problem in torch source code.
+        attn = self.sm(
+            attn
+        )  # There will be a bug here, but it's actually a problem in torch source code.
         attn3 = attn.view(attn.size(0), 1, attn.size(1))  # batch x 1 x seq_len
 
         weighted_context = torch.bmm(attn3, context).squeeze(1)  # batch x dim
@@ -139,21 +151,34 @@ class SoftDotAttention(nn.Module):
 class AttnDecoderLSTM(nn.Module):
     """An unrolled LSTM with attention over instructions for decoding navigation actions."""
 
-    def __init__(self, embedding_size, hidden_size, dropout_ratio, feature_size=2048 + 4, obj_attn_size=256):
+    def __init__(
+        self,
+        embedding_size,
+        hidden_size,
+        dropout_ratio,
+        feature_size=2048 + 4,
+        obj_attn_size=256,
+    ):
         super(AttnDecoderLSTM, self).__init__()
         self.embedding_size = embedding_size
         self.feature_size = feature_size
         self.hidden_size = hidden_size
-        self.embedding = nn.Sequential(nn.Linear(args.angle_feat_size, self.embedding_size), nn.Tanh())
+        self.embedding = nn.Sequential(
+            nn.Linear(args.angle_feat_size, self.embedding_size), nn.Tanh()
+        )
         self.drop = nn.Dropout(p=dropout_ratio)
         self.drop_env = nn.Dropout(p=args.featdropout)
         self.lstm = nn.LSTMCell(embedding_size + feature_size, hidden_size)
         self.feat_att_layer = SoftDotAttention(hidden_size, feature_size)
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
-        self.candidate_att_layer = SoftDotAttention(hidden_size, feature_size + obj_attn_size)
+        self.candidate_att_layer = SoftDotAttention(
+            hidden_size, feature_size + obj_attn_size
+        )
 
         # * === Object Attention ===
-        self.connectionwise_obj_attn = ConnectionwiseObjectAttention(obj_attn_size=obj_attn_size)
+        self.connectionwise_obj_attn = ConnectionwiseObjectAttention(
+            obj_attn_size=obj_attn_size
+        )
         # * ========================
 
     def forward(
@@ -200,7 +225,9 @@ class AttnDecoderLSTM(nn.Module):
         prev_h1_drop = self.drop(prev_h1)
         attn_feat, _ = self.feat_att_layer(prev_h1_drop, feature, output_tilde=False)
 
-        concat_input = torch.cat((action_embeds, attn_feat), 1)  # (batch, embedding_size+feature_size)
+        concat_input = torch.cat(
+            (action_embeds, attn_feat), 1
+        )  # (batch, embedding_size+feature_size)
         h_1, c_1 = self.lstm(concat_input, (prev_h1, c_0))
 
         h_1_drop = self.drop(h_1)
@@ -220,10 +247,14 @@ class AttnDecoderLSTM(nn.Module):
         # * ========================
 
         if not already_dropfeat:
-            cand_feat[..., : -args.angle_feat_size] = self.drop_env(cand_feat[..., : -args.angle_feat_size])
+            cand_feat[..., : -args.angle_feat_size] = self.drop_env(
+                cand_feat[..., : -args.angle_feat_size]
+            )
 
         cand_obj_feats = torch.cat((cand_feat, conn_objs))
-        _, logit = self.candidate_att_layer(h_tilde_drop, cand_obj_feats, output_prob=False)
+        _, logit = self.candidate_att_layer(
+            h_tilde_drop, cand_obj_feats, output_prob=False
+        )
 
         return h_1, c_1, logit, h_tilde
 
@@ -251,7 +282,7 @@ class SpeakerEncoder(nn.Module):
         self.feature_size = feature_size
 
         if bidirectional:
-            print("BIDIR in speaker encoder!!")
+            print("BIDIR in speaker encoder!!", flush=True)
 
         self.lstm = nn.LSTM(
             feature_size,
@@ -316,7 +347,9 @@ class SpeakerEncoder(nn.Module):
 
 
 class SpeakerDecoder(nn.Module):
-    def __init__(self, vocab_size, embedding_size, padding_idx, hidden_size, dropout_ratio):
+    def __init__(
+        self, vocab_size, embedding_size, padding_idx, hidden_size, dropout_ratio
+    ):
         super().__init__()
         self.hidden_size = hidden_size
         self.embedding = torch.nn.Embedding(vocab_size, embedding_size, padding_idx)
@@ -325,7 +358,10 @@ class SpeakerDecoder(nn.Module):
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
         self.projection = nn.Linear(hidden_size, vocab_size)
         self.baseline_projection = nn.Sequential(
-            nn.Linear(hidden_size, 128), nn.ReLU(), nn.Dropout(dropout_ratio), nn.Linear(128, 1)
+            nn.Linear(hidden_size, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout_ratio),
+            nn.Linear(128, 1),
         )
 
     def forward(self, words, ctx, ctx_mask, h0, c0):
@@ -337,7 +373,9 @@ class SpeakerDecoder(nn.Module):
 
         # Get the size
         batchXlength = words.size(0) * words.size(1)
-        multiplier = batchXlength // ctx.size(0)  # By using this, it also supports the beam-search
+        multiplier = batchXlength // ctx.size(
+            0
+        )  # By using this, it also supports the beam-search
 
         # Att and Handle with the shape
         # Reshaping x          <the output> --> (b(word)*l(word), r)
@@ -349,7 +387,10 @@ class SpeakerDecoder(nn.Module):
             .expand(-1, multiplier, -1, -1)
             .contiguous()
             .view(batchXlength, -1, self.hidden_size),
-            mask=ctx_mask.unsqueeze(1).expand(-1, multiplier, -1).contiguous().view(batchXlength, -1),
+            mask=ctx_mask.unsqueeze(1)
+            .expand(-1, multiplier, -1)
+            .contiguous()
+            .view(batchXlength, -1),
         )
         x = x.view(words.size(0), words.size(1), self.hidden_size)
 

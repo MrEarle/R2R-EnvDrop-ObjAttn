@@ -8,3 +8,6 @@ build/
 snap/
 **data/
 metadata_parser
+build
+.venv/
+**logs/

@@ -45,8 +45,14 @@ def load_nav_graphs(scans):
                             positions[item["image_id"]] = np.array(
                                 [item["pose"][3], item["pose"][7], item["pose"][11]]
                             )
-                            assert data[j]["unobstructed"][i], "Graph should be undirected"
-                            G.add_edge(item["image_id"], data[j]["image_id"], weight=distance(item, data[j]))
+                            assert data[j]["unobstructed"][
+                                i
+                            ], "Graph should be undirected"
+                            G.add_edge(
+                                item["image_id"],
+                                data[j]["image_id"],
+                                weight=distance(item, data[j]),
+                            )
             nx.set_node_attributes(G, values=positions, name="position")
             graphs[scan] = G
     return graphs
@@ -95,7 +101,9 @@ def load_datasets(splits):
 class Tokenizer(object):
     """Class to tokenize and encode a sentence."""
 
-    SENTENCE_SPLIT_REGEX = re.compile(r"(\W+)")  # Split on any non-alphanumeric character
+    SENTENCE_SPLIT_REGEX = re.compile(
+        r"(\W+)"
+    )  # Split on any non-alphanumeric character
 
     def __init__(self, vocab=None, encoding_length=20):
         self.encoding_length = encoding_length
@@ -110,13 +118,17 @@ class Tokenizer(object):
             self.word_to_index = new_w2i
             for key, value in self.word_to_index.items():
                 self.index_to_word[value] = key
-        print("W2I is defaultdict", isinstance(self.word_to_index, defaultdict))
+        print(
+            "W2I is defaultdict",
+            isinstance(self.word_to_index, defaultdict),
+            flush=True,
+        )
         old = self.vocab_size()
         self.add_word("<BOS>")
         assert self.vocab_size() == old + 1
-        print("OLD_VOCAB_SIZE", old)
-        print("VOCAB_SIZE", self.vocab_size())
-        print("VOACB", len(vocab))
+        print("OLD_VOCAB_SIZE", old, flush=True)
+        print("VOCAB_SIZE", self.vocab_size(), flush=True)
+        print("VOACB", len(vocab), flush=True)
 
     def finalize(self):
         """
@@ -140,7 +152,9 @@ class Tokenizer(object):
             if len(s.strip()) > 0
         ]:
             # Break up any words containing punctuation only, e.g. '!?', unless it is multiple full stops e.g. '..'
-            if all(c in string.punctuation for c in word) and not all(c in "." for c in word):
+            if all(c in string.punctuation for c in word) and not all(
+                c in "." for c in word
+            ):
                 toks += list(word)
             else:
                 toks.append(word)
@@ -165,9 +179,13 @@ class Tokenizer(object):
         # assert len(encoding) > 2
 
         if len(encoding) < max_length:
-            encoding += [self.word_to_index["<PAD>"]] * (max_length - len(encoding))  # Padding
+            encoding += [self.word_to_index["<PAD>"]] * (
+                max_length - len(encoding)
+            )  # Padding
         elif len(encoding) > max_length:
-            encoding[max_length - 1] = self.word_to_index["<EOS>"]  # Cut the length with EOS
+            encoding[max_length - 1] = self.word_to_index[
+                "<EOS>"
+            ]  # Cut the length with EOS
 
         return np.array(encoding[:max_length])
 
@@ -190,12 +208,14 @@ class Tokenizer(object):
         """
         if len(inst) == 0:
             return inst
-        end = np.argmax(np.array(inst) == self.word_to_index["<EOS>"])  # If no <EOS>, return empty string
+        end = np.argmax(
+            np.array(inst) == self.word_to_index["<EOS>"]
+        )  # If no <EOS>, return empty string
         if len(inst) > 1 and inst[0] == self.word_to_index["<BOS>"]:
             start = 1
         else:
             start = 0
-        # print(inst, start, end)
+        # print(inst, start, end, flush=True)
         return inst[start:end]
 
 
@@ -217,7 +237,7 @@ def build_vocab(splits=["train"], min_count=5, start_vocab=base_vocab):
 
 
 def write_vocab(vocab, path):
-    print("Writing vocab of size %d to %s" % (len(vocab), path))
+    print("Writing vocab of size %d to %s" % (len(vocab), path), flush=True)
     with open(path, "w") as f:
         for word in vocab:
             f.write("%s\n" % word)
@@ -248,7 +268,7 @@ def read_img_features(feature_store):
     import base64
     from tqdm import tqdm
 
-    print("Start loading the image feature")
+    print("Start loading the image feature", flush=True)
     start = time.time()
 
     if "detectfeat" in args.features:
@@ -270,7 +290,11 @@ def read_img_features(feature_store):
                 (views, -1)
             )  # Feature of long_id is (36, 2048)
 
-    print("Finish Loading the image feature from %s in %0.4f seconds" % (feature_store, time.time() - start))
+    print(
+        "Finish Loading the image feature from %s in %0.4f seconds"
+        % (feature_store, time.time() - start),
+        flush=True,
+    )
     return features
 
 
@@ -279,11 +303,20 @@ def read_candidates(candidates_store):
     import base64
     from collections import defaultdict
 
-    print("Start loading the candidate feature")
+    print("Start loading the candidate feature", flush=True)
 
     start = time.time()
 
-    TSV_FIELDNAMES = ["scanId", "viewpointId", "heading", "elevation", "next", "pointId", "idx", "feature"]
+    TSV_FIELDNAMES = [
+        "scanId",
+        "viewpointId",
+        "heading",
+        "elevation",
+        "next",
+        "pointId",
+        "idx",
+        "feature",
+    ]
     candidates = defaultdict(lambda: list())
     items = 0
     with open(candidates_store, "r") as tsv_in_file:  # Open the tsv file.
@@ -297,9 +330,11 @@ def read_candidates(candidates_store):
                     "scanId": item["scanId"],
                     "viewpointId": item["next"],
                     "pointId": int(item["pointId"]),
-                    "idx": int(item["idx"]) + 1,  # Because a bug in the precompute code, here +1 is important
+                    "idx": int(item["idx"])
+                    + 1,  # Because a bug in the precompute code, here +1 is important
                     "feature": np.frombuffer(
-                        base64.decodestring(item["feature"].encode("ascii")), dtype=np.float32
+                        base64.decodestring(item["feature"].encode("ascii")),
+                        dtype=np.float32,
                     ),
                 }
             )
@@ -311,8 +346,12 @@ def read_candidates(candidates_store):
     assert sum(len(candidate) for candidate in candidates.values()) == items
 
     # candidate = candidates[long_id]
-    # print(candidate)
-    print("Finish Loading the candidates from %s in %0.4f seconds" % (candidates_store, time.time() - start))
+    # print(candidate, flush=True)
+    print(
+        "Finish Loading the candidates from %s in %0.4f seconds"
+        % (candidates_store, time.time() - start),
+        flush=True,
+    )
     candidates = dict(candidates)
     return candidates
 
@@ -351,7 +390,7 @@ def new_simulator():
     sim.setCameraResolution(WIDTH, HEIGHT)
     sim.setCameraVFOV(math.radians(VFOV))
     sim.setDiscretizedViewingAngles(True)
-    sim.init()
+    sim.initialize()
 
     return sim
 
@@ -363,13 +402,18 @@ def get_point_angle_feature(baseViewId=0):
     base_heading = (baseViewId % 12) * math.radians(30)
     for ix in range(36):
         if ix == 0:
-            sim.newEpisode("ZMojNkEp431", "2f4d90acd4024c269fb0efe49a8ac540", 0, math.radians(-30))
+            sim.newEpisode(
+                ["ZMojNkEp431"],
+                ["2f4d90acd4024c269fb0efe49a8ac540"],
+                [0],
+                [math.radians(-30)],
+            )
         elif ix % 12 == 0:
-            sim.makeAction(0, 1.0, 1.0)
+            sim.makeAction([0], [1.0], [1.0])
         else:
-            sim.makeAction(0, 1.0, 0)
+            sim.makeAction([0], [1.0], [0])
 
-        state = sim.getState()
+        state = sim.getState()[0]
         assert state.viewIndex == ix
 
         heading = state.heading - base_heading
@@ -433,9 +477,15 @@ class Timer:
         for key in self.cul:
             print(
                 "%s, total time %0.2f, avg time %0.2f, part of %0.2f"
-                % (key, self.cul[key], self.cul[key] * 1.0 / self.iter, self.cul[key] * 1.0 / total)
+                % (
+                    key,
+                    self.cul[key],
+                    self.cul[key] * 1.0 / self.iter,
+                    self.cul[key] * 1.0 / total,
+                ),
+                flush=True,
             )
-        print(total / self.iter)
+        print(total / self.iter, flush=True)
 
 
 stop_word_list = [",", ".", "and", "?", "!"]
@@ -443,10 +493,14 @@ stop_word_list = [",", ".", "and", "?", "!"]
 
 def stop_words_location(inst, mask=False):
     toks = Tokenizer.split_sentence(inst)
-    sws = [i for i, tok in enumerate(toks) if tok in stop_word_list]  # The index of the stop words
+    sws = [
+        i for i, tok in enumerate(toks) if tok in stop_word_list
+    ]  # The index of the stop words
     if len(sws) == 0 or sws[-1] != (len(toks) - 1):  # Add the index of the last token
         sws.append(len(toks) - 1)
-    sws = [x for x, y in zip(sws[:-1], sws[1:]) if x + 1 != y] + [sws[-1]]  # Filter the adjacent stop word
+    sws = [x for x, y in zip(sws[:-1], sws[1:]) if x + 1 != y] + [
+        sws[-1]
+    ]  # Filter the adjacent stop word
     sws_mask = np.ones(len(toks), np.int32)  # Create the mask
     sws_mask[sws] = 0
     return sws_mask if mask else sws
@@ -454,12 +508,16 @@ def stop_words_location(inst, mask=False):
 
 def get_segments(inst, mask=False):
     toks = Tokenizer.split_sentence(inst)
-    sws = [i for i, tok in enumerate(toks) if tok in stop_word_list]  # The index of the stop words
+    sws = [
+        i for i, tok in enumerate(toks) if tok in stop_word_list
+    ]  # The index of the stop words
     sws = [-1] + sws + [len(toks)]  # Add the <start> and <end> positions
     segments = [
         toks[sws[i] + 1 : sws[i + 1]] for i in range(len(sws) - 1)
     ]  # Slice the segments from the tokens
-    segments = list(filter(lambda x: len(x) > 0, segments))  # remove the consecutive stop words
+    segments = list(
+        filter(lambda x: len(x) > 0, segments)
+    )  # remove the consecutive stop words
     return segments
 
 
@@ -508,7 +566,12 @@ def average_length(path2inst):
 
 def tile_batch(tensor, multiplier):
     _, *s = tensor.size()
-    tensor = tensor.unsqueeze(1).expand(-1, multiplier, *(-1,) * len(s)).contiguous().view(-1, *s)
+    tensor = (
+        tensor.unsqueeze(1)
+        .expand(-1, multiplier, *(-1,) * len(s))
+        .contiguous()
+        .view(-1, *s)
+    )
     return tensor
 
 
@@ -564,8 +627,8 @@ class FloydGraph:
             return [y]
         else:
             k = self._point[x][y]
-            # print(x, y, k)
+            # print(x, y, k, flush=True)
             # for x1 in (x, k, y):
             #     for x2 in (x, k, y):
-            #         print(x1, x2, "%.4f" % self._dis[x1][x2])
+            #         print(x1, x2, "%.4f" % self._dis[x1][x2], flush=True)
             return self.path(x, k) + self.path(k, y)
