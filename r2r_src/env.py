@@ -356,7 +356,7 @@ class R2RBatch:
 
         self.buffered_obj_dict[long_id] = {
             "orients_normalized": obj_orients,
-            "obj_names": obj_names,
+            "names": obj_names,
         }
 
         return obj_dict

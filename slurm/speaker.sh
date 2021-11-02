@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=R2R-DropEnv-ObjAttn-Speaker
 #SBATCH --ntasks=1                  # Run only one task
-#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/out-%j.log    # Output name (%j is replaced by job ID)
-#SBATCH --error=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/err-%j.log     # Output errors (optional)
+#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/speaker_out.log    # Output name (%j is replaced by job ID)
+#SBATCH --error=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/speaker_err.log     # Output errors (optional)
 #SBATCH --partition=all
 #SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job

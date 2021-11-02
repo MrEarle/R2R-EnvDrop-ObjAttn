@@ -238,6 +238,8 @@ class AttnDecoderLSTM(nn.Module):
         h_tilde_drop = self.drop(h_tilde)
 
         # * === Object Attention ===
+        # conn_objs: [batch, num_viewpoints, obj_attn_size]
+        # conn_objs_weights: [batch, num_viewpoints, num_objs]
         conn_objs, conn_objs_weights = self.connectionwise_obj_attn(
             object_headings=obj_heads,  # [batch, num_objs, angle_feat_size]
             encoded_obj_idxs=obj_idxs,  # [batch, num_objs, 3 * hidden_size]
@@ -246,12 +248,13 @@ class AttnDecoderLSTM(nn.Module):
         )
         # * ========================
 
+        # cand_feat: [batch, num_conn, feat_size]
         if not already_dropfeat:
             cand_feat[..., : -args.angle_feat_size] = self.drop_env(
                 cand_feat[..., : -args.angle_feat_size]
             )
 
-        cand_obj_feats = torch.cat((cand_feat, conn_objs))
+        cand_obj_feats = torch.cat((cand_feat, conn_objs), dim=2)
         _, logit = self.candidate_att_layer(
             h_tilde_drop, cand_obj_feats, output_prob=False
         )

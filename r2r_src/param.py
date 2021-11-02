@@ -13,21 +13,13 @@ class Param:
         self.parser.add_argument("--train", type=str, default="speaker")
 
         # Data preparation
-        self.parser.add_argument(
-            "--maxInput", type=int, default=80, help="max input instruction"
-        )
-        self.parser.add_argument(
-            "--maxDecode", type=int, default=120, help="max input instruction"
-        )
-        self.parser.add_argument(
-            "--maxAction", type=int, default=20, help="Max Action sequence"
-        )
+        self.parser.add_argument("--maxInput", type=int, default=80, help="max input instruction")
+        self.parser.add_argument("--maxDecode", type=int, default=120, help="max input instruction")
+        self.parser.add_argument("--maxAction", type=int, default=20, help="Max Action sequence")
         self.parser.add_argument("--batchSize", type=int, default=64)
         self.parser.add_argument("--ignoreid", type=int, default=-100)
         self.parser.add_argument("--feature_size", type=int, default=2048)
-        self.parser.add_argument(
-            "--loadOptim", action="store_const", default=False, const=True
-        )
+        self.parser.add_argument("--loadOptim", action="store_const", default=False, const=True)
 
         # Load the model from
         self.parser.add_argument("--speaker", default=None)
@@ -45,12 +37,8 @@ class Param:
             default=False,
             const=True,
         )
-        self.parser.add_argument(
-            "--mlWeight", dest="ml_weight", type=float, default=0.05
-        )
-        self.parser.add_argument(
-            "--teacherWeight", dest="teacher_weight", type=float, default=1.0
-        )
+        self.parser.add_argument("--mlWeight", dest="ml_weight", type=float, default=0.05)
+        self.parser.add_argument("--teacherWeight", dest="teacher_weight", type=float, default=1.0)
         self.parser.add_argument(
             "--accumulateGrad",
             dest="accumulate_grad",
@@ -81,22 +69,14 @@ class Param:
             default=False,
             const=True,
         )
-        self.parser.add_argument(
-            "--submit", action="store_const", default=False, const=True
-        )
-        self.parser.add_argument(
-            "--beam", action="store_const", default=False, const=True
-        )
+        self.parser.add_argument("--submit", action="store_const", default=False, const=True)
+        self.parser.add_argument("--beam", action="store_const", default=False, const=True)
         self.parser.add_argument("--alpha", type=float, default=0.5)
 
         # Training Configurations
         self.parser.add_argument("--optim", type=str, default="rms")  # rms, adam
-        self.parser.add_argument(
-            "--lr", type=float, default=0.0001, help="The learning rate"
-        )
-        self.parser.add_argument(
-            "--decay", dest="weight_decay", type=float, default=0.0
-        )
+        self.parser.add_argument("--lr", type=float, default=0.0001, help="The learning rate")
+        self.parser.add_argument("--decay", dest="weight_decay", type=float, default=0.0)
         self.parser.add_argument("--dropout", type=float, default=0.5)
         self.parser.add_argument(
             "--feedback",
@@ -117,12 +97,8 @@ class Param:
         self.parser.add_argument("--wemb", type=int, default=256)
         self.parser.add_argument("--aemb", type=int, default=64)
         self.parser.add_argument("--proj", type=int, default=512)
-        self.parser.add_argument(
-            "--fast", dest="fast_train", action="store_const", default=False, const=True
-        )
-        self.parser.add_argument(
-            "--valid", action="store_const", default=False, const=True
-        )
+        self.parser.add_argument("--fast", dest="fast_train", action="store_const", default=False, const=True)
+        self.parser.add_argument("--valid", action="store_const", default=False, const=True)
         self.parser.add_argument(
             "--candidate",
             dest="candidate_mask",
@@ -131,22 +107,12 @@ class Param:
             const=True,
         )
 
-        self.parser.add_argument(
-            "--bidir", type=bool, default=True
-        )  # This is not full option
-        self.parser.add_argument(
-            "--encode", type=str, default="word"
-        )  # sub, word, sub_ctx
-        self.parser.add_argument(
-            "--subout", dest="sub_out", type=str, default="tanh"
-        )  # tanh, max
-        self.parser.add_argument(
-            "--attn", type=str, default="soft"
-        )  # soft, mono, shift, dis_shift
+        self.parser.add_argument("--bidir", type=bool, default=True)  # This is not full option
+        self.parser.add_argument("--encode", type=str, default="word")  # sub, word, sub_ctx
+        self.parser.add_argument("--subout", dest="sub_out", type=str, default="tanh")  # tanh, max
+        self.parser.add_argument("--attn", type=str, default="soft")  # soft, mono, shift, dis_shift
 
-        self.parser.add_argument(
-            "--angleFeatSize", dest="angle_feat_size", type=int, default=4
-        )
+        self.parser.add_argument("--angleFeatSize", dest="angle_feat_size", type=int, default=4)
 
         # A2C
         self.parser.add_argument("--gamma", default=0.9, type=float)
@@ -173,16 +139,16 @@ class Param:
             assert False
 
 
-param = Param()
-args = param.args
-args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
-args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
+# param = Param()
+# args = param.args
+# args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
+# args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
 
-args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
-args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
-args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
-args.log_dir = "snap/%s" % args.name
+# args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
+# args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
+# args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
+# args.log_dir = "snap/%s" % args.name
 
-if not os.path.exists(args.log_dir):
-    os.makedirs(args.log_dir)
-DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+# if not os.path.exists(args.log_dir):
+#     os.makedirs(args.log_dir)
+# DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")

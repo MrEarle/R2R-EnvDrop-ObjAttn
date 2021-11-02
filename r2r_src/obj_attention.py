@@ -112,7 +112,7 @@ class ObjectHeadingViewpointSimilarity(nn.Module):
 
         self.softmax = nn.Softmax(dim=2)
 
-    def call(
+    def forward(
         self,
         obj_feats: Tensor,
         object_headings: Tensor,
@@ -208,7 +208,7 @@ class ConnectionwiseObjectAttention(nn.Module):
             attn_weights.append(attn_weight)
 
         # shape: [batch, num_viewpoints, obj_attn_size]
-        attended_objects = torch.stack(attended_objects, dim=1)
+        attended_objects = torch.stack(attended_objects, dim=1).squeeze()
 
         # shape: [batch, num_viewpoints, num_objs]
         attn_weights = torch.stack(attn_weights, dim=1)
