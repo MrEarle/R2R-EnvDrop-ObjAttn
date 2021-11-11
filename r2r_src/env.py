@@ -51,16 +51,12 @@ class EnvBatch:
             self.image_w = 640
             self.image_h = 480
             self.vfov = 60
-        self.featurized_scans = set(
-            [key.split("_")[0] for key in list(self.features.keys())]
-        )
+        self.featurized_scans = set([key.split("_")[0] for key in list(self.features.keys())])
         self.sims = []
         for i in range(batch_size):
             sim = MatterSim.Simulator()
             sim.setRenderingEnabled(False)
-            sim.setDiscretizedViewingAngles(
-                True
-            )  # Set increment/decrement to 30 degree. (otherwise by radians)
+            sim.setDiscretizedViewingAngles(True)  # Set increment/decrement to 30 degree. (otherwise by radians)
             sim.setCameraResolution(self.image_w, self.image_h)
             sim.setCameraVFOV(math.radians(self.vfov))
             sim.initialize()
@@ -70,9 +66,7 @@ class EnvBatch:
         return scanId + "_" + viewpointId
 
     def newEpisodes(self, scanIds, viewpointIds, headings):
-        for i, (scanId, viewpointId, heading) in enumerate(
-            zip(scanIds, viewpointIds, headings)
-        ):
+        for i, (scanId, viewpointId, heading) in enumerate(zip(scanIds, viewpointIds, headings)):
             # print("New episode %d" % i, flush=True)
             # sys.stdout.flush()
             self.sims[i].newEpisode([scanId], [viewpointId], [heading], [0])
@@ -126,18 +120,14 @@ class R2RBatch:
             for item in load_datasets([split]):
                 # Split multiple instructions into separate entries
                 for j, instr in enumerate(item["instructions"]):
-                    if (
-                        item["scan"] not in self.env.featurized_scans
-                    ):  # For fast training
+                    if item["scan"] not in self.env.featurized_scans:  # For fast training
                         continue
                     new_item = dict(item)
                     new_item["instr_id"] = "%s_%d" % (item["path_id"], j)
                     new_item["instructions"] = instr
                     if tokenizer:
                         new_item["instr_encoding"] = tokenizer.encode_sentence(instr)
-                    if (
-                        not tokenizer or new_item["instr_encoding"] is not None
-                    ):  # Filter the wrong data
+                    if not tokenizer or new_item["instr_encoding"] is not None:  # Filter the wrong data
                         self.data.append(new_item)
                         scans.append(item["scan"])
         if name is None:
@@ -162,10 +152,7 @@ class R2RBatch:
 
         # It means that the fake data is equals to data in the supervised setup
         self.fake_data = self.data
-        print(
-            "R2RBatch loaded with %d instructions, using splits: %s"
-            % (len(self.data), ",".join(splits))
-        )
+        print("R2RBatch loaded with %d instructions, using splits: %s" % (len(self.data), ",".join(splits)))
 
     def size(self):
         return len(self.data)
@@ -239,9 +226,7 @@ class R2RBatch:
 
             for ix in range(36):
                 if ix == 0:
-                    self.sim.newEpisode(
-                        [scanId], [viewpointId], [0], [math.radians(-30)]
-                    )
+                    self.sim.newEpisode([scanId], [viewpointId], [0], [math.radians(-30)])
                 elif ix % 12 == 0:
                     self.sim.makeAction([0], [1.0], [1.0])
                 else:
@@ -251,9 +236,7 @@ class R2RBatch:
                 assert state.viewIndex == ix
 
                 # Heading and elevation for the viewpoint center
-                heading = (
-                    state.heading - base_heading
-                )  #! Heading del view, relativo al agente
+                heading = state.heading - base_heading  #! Heading del view, relativo al agente
                 elevation = state.elevation
 
                 visual_feat = feature[ix]
@@ -267,10 +250,7 @@ class R2RBatch:
                     # Heading and elevation for for the loc
                     loc_heading = heading + loc.rel_heading
                     loc_elevation = elevation + loc.rel_elevation
-                    if (
-                        loc.viewpointId not in adj_dict
-                        or distance < adj_dict[loc.viewpointId]["distance"]
-                    ):
+                    if loc.viewpointId not in adj_dict or distance < adj_dict[loc.viewpointId]["distance"]:
                         angle_feat = utils.angle_feature(loc_heading, loc_elevation)
                         adj_dict[loc.viewpointId] = {
                             "heading": loc_heading,  #! Heading de la conexion, relativa al agente
@@ -326,9 +306,7 @@ class R2RBatch:
 
             return candidate_new
 
-    def make_objs(
-        self, scanId: str, viewpointId: str, agent_head: float, agent_el: float
-    ) -> dict:
+    def make_objs(self, scanId: str, viewpointId: str, agent_head: float, agent_el: float) -> dict:
         long_id = "%s_%s" % (scanId, viewpointId)
         if long_id in self.buffered_obj_dict:
             o_new = self.buffered_obj_dict[long_id].copy()
@@ -336,22 +314,28 @@ class R2RBatch:
             obj_orients_norm = o_new["orients_normalized"]
 
             o_new["orients"] = np.array(
-                [
-                    utils.angle_feature(head - agent_head, elev - agent_el)
-                    for head, elev in obj_orients_norm
-                ]
+                [utils.angle_feature(head - agent_head, elev - agent_el) for head, elev in obj_orients_norm]
             )
             o_new.pop("orients_normalized")
             return o_new
 
         obj_names, obj_orients = self.__get_viewpoint_object(scanId, viewpointId)
+
         obj_names = [self.tok.encode_sentence(obj_name) for obj_name in obj_names]
+
+        banned_words = ["<UNK>", "object", "ceiling", "wall", "floor"]
+        valid_indices = [
+            i for i, name in enumerate(obj_names) if not any(self.tok.word_to_index[w] in name for w in banned_words)
+        ]
+
+        obj_names = [obj_names[i] for i in valid_indices]
+        obj_orients = [obj_orients[i] for i in valid_indices]
+        # Include only objects with an encoding
+
         obj_orients_agent = np.array(
-            [
-                utils.angle_feature(head - agent_head, elev - agent_el)
-                for head, elev in obj_orients
-            ]
+            [utils.angle_feature(head - agent_head, elev - agent_el) for (head, elev) in obj_orients]
         )
+
         obj_dict = {"orients": obj_orients_agent, "names": obj_names}
 
         self.buffered_obj_dict[long_id] = {
@@ -361,9 +345,7 @@ class R2RBatch:
 
         return obj_dict
 
-    def __get_viewpoint_object(
-        self, scan: str, viewpointId: str
-    ) -> Tuple[str, np.ndarray]:
+    def __get_viewpoint_object(self, scan: str, viewpointId: str) -> Tuple[str, np.ndarray]:
         """
         param:
             scan {str}: Scan Id
@@ -377,9 +359,7 @@ class R2RBatch:
         parser = HouseSegmentationFile.load_mapping(scan)
         banned_mpcat40_index = (0, 40, 41)
 
-        objects = parser.angle_relative_viewpoint_objects(
-            viewpointId, banned_mpcat40_index
-        )
+        objects = parser.angle_relative_viewpoint_objects(viewpointId, banned_mpcat40_index)
         objects = objects.query('category_mapping_name != "unknown"')
 
         headings = objects["heading"].to_numpy()
@@ -392,19 +372,13 @@ class R2RBatch:
         obs = []
         for i, (feature, state) in enumerate(self.env.getStates()):
             item = self.batch[i]  #! Saca info de la instruccion
-            base_view_id = (
-                state.viewIndex
-            )  #! Indice de imagen que esta mirando el agente (orientacion)
+            base_view_id = state.viewIndex  #! Indice de imagen que esta mirando el agente (orientacion)
 
             # Full features
-            candidate = self.make_candidate(
-                feature, state.scanId, state.location.viewpointId, state.viewIndex
-            )
+            candidate = self.make_candidate(feature, state.scanId, state.location.viewpointId, state.viewIndex)
 
             # Objects
-            objects = self.make_objs(
-                state.scanId, state.location.viewpointId, state.heading, state.elevation
-            )
+            objects = self.make_objs(state.scanId, state.location.viewpointId, state.heading, state.elevation)
 
             # (visual_feature, angel_feature) for views
             feature = np.concatenate(
@@ -431,9 +405,7 @@ class R2RBatch:
             if "instr_encoding" in item:
                 obs[-1]["instr_encoding"] = item["instr_encoding"]
             # A2C reward. The negative distance between the state and the final state
-            obs[-1]["distance"] = self.distances[state.scanId][
-                state.location.viewpointId
-            ][item["path"][-1]]
+            obs[-1]["distance"] = self.distances[state.scanId][state.location.viewpointId][item["path"][-1]]
         return obs
 
     def reset(self, batch=None, inject=False, **kwargs):

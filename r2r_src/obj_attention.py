@@ -93,9 +93,7 @@ class ObjectAttention(nn.Module):
 
         # attended_objs: [batch, 1, self._obj_attn_size]
         # attn_weights: [batch, 1, num_objs]
-        attended_objs, attn_weights = self._obj_attn(
-            q=projected_text_ctx, k=projected_obj_feats, v=projected_obj_feats
-        )
+        attended_objs, attn_weights = self._obj_attn(q=projected_text_ctx, k=projected_obj_feats, v=projected_obj_feats)
 
         return attended_objs, attn_weights
 
@@ -160,6 +158,7 @@ class ConnectionwiseObjectAttention(nn.Module):
 
         self._obj_viewpoint_similarity = ObjectHeadingViewpointSimilarity()
         self._obj_attention = ObjectAttention(object_attention_size=obj_attn_size)
+        self.traj_info = None
 
     def forward(
         self,

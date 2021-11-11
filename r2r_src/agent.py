@@ -164,19 +164,19 @@ class Seq2SeqAgent(BaseAgent):
 
         obj_headings = np.zeros((len(obs), max_objs, angle_enc_size))
         obj_idxs = np.zeros((len(obs), max_objs, max_obj_name_len))
+        sample_indices = np.zeros((len(obs), max_objs))
 
         for i, ob in enumerate(obs):
             objs = ob["objects"]
             obj_tuples = tuple(zip(objs["orients"], objs["names"]))
             objs_to_sample = min(max_objs, len(obj_tuples))
-            for j, (orient, idxs) in enumerate(random.sample(obj_tuples, objs_to_sample)):
+            for j, sample_index in enumerate(random.sample(range(len(obj_tuples)), objs_to_sample)):
+                (orient, idxs) = obj_tuples[sample_index]
                 obj_headings[i, j] = orient
                 obj_idxs[i, j] = idxs[:3]
+                sample_indices[i, j] = sample_index
 
-        return (
-            torch.from_numpy(obj_headings).float().cuda(),
-            torch.from_numpy(obj_idxs).int().cuda(),
-        )
+        return (torch.from_numpy(obj_headings).float().cuda(), torch.from_numpy(obj_idxs).int().cuda(), sample_indices)
 
     def _feature_variable(self, obs):
         """Extract precomputed features into variable."""
@@ -195,6 +195,7 @@ class Seq2SeqAgent(BaseAgent):
             (len(obs), max_cand_len, self.feature_size + args.angle_feat_size),
             dtype=np.float32,
         )
+
         angle_feats = np.zeros((len(obs), max_cand_len, args.angle_feat_size))
         # Note: The candidate_feat at len(ob['candidate']) is the feature for the END
         # which is zero in my implementation
@@ -329,7 +330,7 @@ class Seq2SeqAgent(BaseAgent):
         # * ==== Encode object labels ===
         # obj_heads = [batch, num_objs, angle_feat_size]
         # obj_idxs = [batch, num_objs, 3]
-        obj_heads, obj_idxs = self._parse_objs(perm_obs, angle_enc_size=args.angle_feat_size)
+        obj_heads, obj_idxs, sample_indices = self._parse_objs(perm_obs, angle_enc_size=args.angle_feat_size)
         idx_s = obj_idxs.shape
 
         # [batch * num_objs, 3]
@@ -390,6 +391,23 @@ class Seq2SeqAgent(BaseAgent):
             if speaker is not None:  # Apply the env drop mask to the feat
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
+
+            # ! Paso la informacion de la trayectoria para poder conectar con atenciones en analisis
+            traj_info_keys = [
+                "instr_id",
+                "scan",
+                "viewpoint",
+                "viewIndex",
+                "objects",
+                "heading",
+                "elevation",
+                "candidate",
+            ]
+            traj_info = [
+                {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample}
+                for ob, obj_sample in zip(perm_obs, sample_indices)
+            ]
+            self.decoder.connectionwise_obj_attn.traj_info = traj_info
 
             # ! Aca tengo que pasar los objetos
             h_t, c_t, logit, h1 = self.decoder(
