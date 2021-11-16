@@ -1,4 +1,4 @@
-name=agent_obj_pruned
+name=agent_obj_pruned_mask
 flag="--attn soft --train listener 
       --featdropout 0.3
       --angleFeatSize 128

@@ -13,21 +13,23 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(attn_dropout)
         self.softmax = nn.Softmax(dim=1)
 
-    def forward(self, q, k, v, attn_mask=None, reverse_attn=False):
+        self.neginf = torch.tensor([float("-inf")]).cuda()
+
+    def forward(self, q: Tensor, k: Tensor, v: Tensor, attn_mask: Tensor = None, reverse_attn=False):
         _, len_q, _ = q.size()
         _, len_k, _ = k.size()
 
-        attn = torch.bmm(q, k.transpose(1, 2)) / self.temper
+        attn: Tensor = torch.bmm(q, k.transpose(1, 2)) / self.temper
 
         if reverse_attn:
             attn = -attn
 
         if attn_mask is not None:
-            attn_mask = attn_mask.unsqueeze(1).expand_as(attn)
-            attn.data.masked_fill_((attn_mask == 0).data, -float("inf"))
-            # attn = attn.masked_fill((attn_mask == 0).data, -np.inf)
+            attn_mask = attn_mask.unsqueeze(1)
+            attn = torch.where(attn_mask.bool(), attn, self.neginf)
 
         attn_weight = self.softmax(attn.view(-1, len_k)).view(-1, len_q, len_k)
+        attn_weight = torch.nan_to_num(attn_weight)
 
         attn_weight = self.dropout(attn_weight)
         output = torch.bmm(attn_weight, v)
@@ -66,14 +68,16 @@ class ObjectAttention(nn.Module):
         self._project_text = nn.LazyLinear(self._obj_attn_size)
         self._obj_attn = ScaledDotProductAttention(d_model=num_objects)
 
-    def forward(self, obj_feats: Tensor, text_ctx: Tensor) -> Tensor:
+    def forward(self, obj_feats: Tensor, text_ctx: Tensor, obj_mask: Tensor = None) -> Tensor:
         """
         params:
             obj_feats:  Collection of num_objs objects detected for every image composing
-                        the panorama.
+                        the panorama. (values)
                 shape: [batch, num_objs, obj_feat_size + orient_feat_size]
-            text_ctx:   Language features attended by visual input (RCM)
+            text_ctx:   Language features attended by visual input (RCM) (query)
                 shape: [batch, lang_feat_size]
+            obj_mask:   Object mask
+                shape: [batch, num_objs]
 
 
         return:
@@ -93,7 +97,9 @@ class ObjectAttention(nn.Module):
 
         # attended_objs: [batch, 1, self._obj_attn_size]
         # attn_weights: [batch, 1, num_objs]
-        attended_objs, attn_weights = self._obj_attn(q=projected_text_ctx, k=projected_obj_feats, v=projected_obj_feats)
+        attended_objs, attn_weights = self._obj_attn(
+            q=projected_text_ctx, k=projected_obj_feats, v=projected_obj_feats, attn_mask=obj_mask
+        )
 
         return attended_objs, attn_weights
 
@@ -166,6 +172,7 @@ class ConnectionwiseObjectAttention(nn.Module):
         encoded_obj_idxs: Tensor,
         viewpoint_heading: Tensor,
         text_context: Tensor,
+        obj_mask: Tensor = None,
     ) -> Tuple[Tensor, Tensor]:
         """
         Parameters:
@@ -177,6 +184,8 @@ class ConnectionwiseObjectAttention(nn.Module):
                 shape: [batch, num_viewpoints, viewpoint_heading_feat]
             text_context:
                 shape: [batch, txt_context_shape]
+            obj_mask:
+                shape: [batch, num_objs]
         """
 
         # Get object weighed by heading similarity with viewpoints
@@ -201,7 +210,7 @@ class ConnectionwiseObjectAttention(nn.Module):
             )
 
             # [batch, 1, self._obj_attn_size], [batch, 1, num_objs]
-            attn_objs, attn_weight = self._obj_attention(objs, text_context)
+            attn_objs, attn_weight = self._obj_attention(objs, text_context, obj_mask=obj_mask)
 
             attended_objects.append(attn_objs)
             attn_weights.append(attn_weight)

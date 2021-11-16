@@ -177,6 +177,7 @@ class AttnDecoderLSTM(nn.Module):
         obj_heads,
         obj_idxs,
         angle_feats,
+        obj_mask=None,
         ctx_mask=None,
         already_dropfeat=False,
     ):
@@ -192,6 +193,7 @@ class AttnDecoderLSTM(nn.Module):
         obj_heads: batch x num_objs x angle_feat_size # ! Object headings
         obj_idxs: batch x num_objs x 3 * hidden_size # ! Object features
         angle_feats: batch x cand x angle_feat_size # ! Object features
+        obj_mask: batch x num_objs - objects to be masked # ! Object mask
         ctx_mask: batch x seq_len - indices to be masked
         already_dropfeat: used in EnvDrop
         """
@@ -227,6 +229,7 @@ class AttnDecoderLSTM(nn.Module):
             encoded_obj_idxs=obj_idxs,  # [batch, num_objs, 3 * hidden_size]
             viewpoint_heading=angle_feats,  # [batch, num_conn, angle_feat_size]
             text_context=h_tilde,  # [batch, txt_context_shape]
+            obj_mask=obj_mask,  # [batch, num_objs]
         )
         # * ========================
 

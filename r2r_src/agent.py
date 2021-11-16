@@ -164,6 +164,7 @@ class Seq2SeqAgent(BaseAgent):
 
         obj_headings = np.zeros((len(obs), max_objs, angle_enc_size))
         obj_idxs = np.zeros((len(obs), max_objs, max_obj_name_len))
+        mask = np.zeros((len(obs), max_objs))
         sample_indices = np.zeros((len(obs), max_objs))
 
         for i, ob in enumerate(obs):
@@ -174,9 +175,15 @@ class Seq2SeqAgent(BaseAgent):
                 (orient, idxs) = obj_tuples[sample_index]
                 obj_headings[i, j] = orient
                 obj_idxs[i, j] = idxs[:3]
+                mask[i, j] = 1
                 sample_indices[i, j] = sample_index
 
-        return (torch.from_numpy(obj_headings).float().cuda(), torch.from_numpy(obj_idxs).int().cuda(), sample_indices)
+        return (
+            torch.from_numpy(obj_headings).float().cuda(),
+            torch.from_numpy(obj_idxs).int().cuda(),
+            torch.from_numpy(mask).int().cuda(),
+            sample_indices,
+        )
 
     def _feature_variable(self, obs):
         """Extract precomputed features into variable."""
@@ -330,7 +337,7 @@ class Seq2SeqAgent(BaseAgent):
         # * ==== Encode object labels ===
         # obj_heads = [batch, num_objs, angle_feat_size]
         # obj_idxs = [batch, num_objs, 3]
-        obj_heads, obj_idxs, sample_indices = self._parse_objs(perm_obs, angle_enc_size=args.angle_feat_size)
+        obj_heads, obj_idxs, obj_mask, sample_indices = self._parse_objs(perm_obs, angle_enc_size=args.angle_feat_size)
         idx_s = obj_idxs.shape
 
         # [batch * num_objs, 3]
@@ -404,8 +411,8 @@ class Seq2SeqAgent(BaseAgent):
                 "candidate",
             ]
             traj_info = [
-                {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample}
-                for ob, obj_sample in zip(perm_obs, sample_indices)
+                {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample, "mask": msk}
+                for ob, obj_sample, msk in zip(perm_obs, sample_indices, obj_mask)
             ]
             self.decoder.connectionwise_obj_attn.traj_info = traj_info
 
@@ -421,6 +428,7 @@ class Seq2SeqAgent(BaseAgent):
                 obj_heads,
                 enc_obj_idxs,
                 angle_feats,
+                obj_mask=obj_mask,
                 ctx_mask=ctx_mask,
                 already_dropfeat=(speaker is not None),
             )
