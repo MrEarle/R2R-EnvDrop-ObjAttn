@@ -149,7 +149,7 @@ class ObjectHeadingViewpointSimilarity(nn.Module):
             projected_viewpoint_heading,
         )
 
-        # TODO: Normalizar heading similarity para que sea un score. Quizas softmax?
+        # ? Normalizar heading similarity para que sea un score. Quizas softmax?
         heading_similarity = self.softmax(heading_similarity)
 
         # [batch, num_viewpoints, num_objs, obj_feat_size]
