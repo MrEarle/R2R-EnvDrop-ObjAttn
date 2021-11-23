@@ -162,6 +162,11 @@ class ConnectionwiseObjectAttention(nn.Module):
     def __init__(self, obj_attn_size=256):
         super().__init__()
 
+        self.obj_feat_reducer = nn.LazyConv2d(
+            out_channels=obj_attn_size,
+            kernel_size=1,
+        )
+
         self._obj_viewpoint_similarity = ObjectHeadingViewpointSimilarity()
         self._obj_attention = ObjectAttention(object_attention_size=obj_attn_size)
         self.traj_info = None
@@ -169,7 +174,7 @@ class ConnectionwiseObjectAttention(nn.Module):
     def forward(
         self,
         object_headings: Tensor,
-        encoded_obj_idxs: Tensor,
+        object_feats: Tensor,
         viewpoint_heading: Tensor,
         text_context: Tensor,
         obj_mask: Tensor = None,
@@ -178,8 +183,8 @@ class ConnectionwiseObjectAttention(nn.Module):
         Parameters:
             object_headings:
                 shape: [batch, num_objs, direction_feats]
-            encoded_obj_idxs:
-                shape:  [batch, num_objs, max_obj_len * txt_feat_size]
+            object_feats:
+                shape:  [batch, num_objs, 2048, 2, 2]
             viewpoint_heading:
                 shape: [batch, num_viewpoints, viewpoint_heading_feat]
             text_context:
@@ -188,10 +193,20 @@ class ConnectionwiseObjectAttention(nn.Module):
                 shape: [batch, num_objs]
         """
 
+        # Flatten to use num_objs as batch. [batch * num_objs, 2048, 2, 2]
+        o_shape = object_feats.shape
+        object_feats = object_feats.view((-1, *o_shape[2:]))
+
+        # Reduce object features to [batch * num_objs, obj_attn_size, 2, 2]
+        reduced_feats = self.obj_feat_reducer(object_feats)
+
+        # Restore batch and num_objs, and flatten. [batch, num_objs, obj_attn_size * 4 (1024)]
+        reduced_feats = reduced_feats.view((o_shape[0], o_shape[1], -1))
+
         # Get object weighed by heading similarity with viewpoints
         # Shape: [batch, num_viewpoints, num_objs, obj_feat_size]
         viewpoint_objs = self._obj_viewpoint_similarity(
-            obj_feats=encoded_obj_idxs,
+            obj_feats=reduced_feats,
             object_headings=object_headings,
             viewpoint_headings=viewpoint_heading,
         )

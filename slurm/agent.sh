@@ -8,7 +8,7 @@
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
 #SBATCH --gres=gpu
 #SBATCH --time=3-00:00
-#SBATCH --mem=16gb
+#SBATCH --mem=32gb
 
 pwd; hostname; date
 

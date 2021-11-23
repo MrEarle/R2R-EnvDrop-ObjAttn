@@ -175,7 +175,7 @@ class AttnDecoderLSTM(nn.Module):
         c_0,
         ctx,
         obj_heads,
-        obj_idxs,
+        obj_feats,
         angle_feats,
         obj_mask=None,
         ctx_mask=None,
@@ -191,7 +191,7 @@ class AttnDecoderLSTM(nn.Module):
         c_0: batch x hidden_size
         ctx: batch x seq_len x dim # ! Instruccion codificada
         obj_heads: batch x num_objs x angle_feat_size # ! Object headings
-        obj_idxs: batch x num_objs x 3 * hidden_size # ! Object features
+        obj_feats: batch x num_objs x 2048 x 2 x 2 # ! Object features (from roi pooling)
         angle_feats: batch x cand x angle_feat_size # ! Object features
         obj_mask: batch x num_objs - objects to be masked # ! Object mask
         ctx_mask: batch x seq_len - indices to be masked
@@ -223,10 +223,10 @@ class AttnDecoderLSTM(nn.Module):
 
         # * === Object Attention ===
         # conn_objs: [batch, num_viewpoints, obj_attn_size]
-        # conn_objs_weights: [batch, num_viewpoints, num_objs]
-        conn_objs, conn_objs_weights = self.connectionwise_obj_attn(
+        # _: [batch, num_viewpoints, num_objs]
+        conn_objs, _ = self.connectionwise_obj_attn(
             object_headings=obj_heads,  # [batch, num_objs, angle_feat_size]
-            encoded_obj_idxs=obj_idxs,  # [batch, num_objs, 3 * hidden_size]
+            object_feats=obj_feats,  # [batch, num_objs, 2048, 2, 2]
             viewpoint_heading=angle_feats,  # [batch, num_conn, angle_feat_size]
             text_context=h_tilde,  # [batch, txt_context_shape]
             obj_mask=obj_mask,  # [batch, num_objs]

@@ -139,16 +139,18 @@ class Param:
             assert False
 
 
-param = Param()
-args = param.args
-args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
-args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
+# param = Param()
+# args = param.args
+# args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
+# args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
 
-args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
-args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
-args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
-args.log_dir = "snap/%s" % args.name
+# args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
+# args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
+# args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
+# args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/objProposals.json"
+# args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
+# args.log_dir = "snap/%s" % args.name
 
-if not os.path.exists(args.log_dir):
-    os.makedirs(args.log_dir)
-DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+# if not os.path.exists(args.log_dir):
+#     os.makedirs(args.log_dir)
+# DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")

@@ -160,28 +160,34 @@ class Seq2SeqAgent(BaseAgent):
             list(perm_idx),
         )
 
-    def _parse_objs(self, obs, max_objs=20, max_obj_name_len=3, angle_enc_size=2) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _parse_objs(self, obs, max_objs=20) -> Tuple[torch.Tensor, torch.Tensor]:
+        obj_feat_shape = [2048, 2, 2]
+        angle_enc_size = args.angle_feat_size
 
-        obj_headings = np.zeros((len(obs), max_objs, angle_enc_size))
-        obj_idxs = np.zeros((len(obs), max_objs, max_obj_name_len))
-        mask = np.zeros((len(obs), max_objs))
+        obj_feats = torch.zeros((len(obs), max_objs, *obj_feat_shape))
+        obj_headings = torch.zeros((len(obs), max_objs, angle_enc_size))
+        mask = torch.zeros((len(obs), max_objs))
         sample_indices = np.zeros((len(obs), max_objs))
 
         for i, ob in enumerate(obs):
             objs = ob["objects"]
-            obj_tuples = tuple(zip(objs["orients"], objs["names"]))
+            obj_tuples = tuple(zip(objs["orients"], objs["feats"]))
+            if len(obj_tuples) == 0:
+                continue
+
             objs_to_sample = min(max_objs, len(obj_tuples))
+
             for j, sample_index in enumerate(random.sample(range(len(obj_tuples)), objs_to_sample)):
-                (orient, idxs) = obj_tuples[sample_index]
+                (orient, feats) = obj_tuples[sample_index]
                 obj_headings[i, j] = orient
-                obj_idxs[i, j] = idxs[:3]
+                obj_feats[i, j] = feats
                 mask[i, j] = 1
                 sample_indices[i, j] = sample_index
 
         return (
-            torch.from_numpy(obj_headings).float().cuda(),
-            torch.from_numpy(obj_idxs).int().cuda(),
-            torch.from_numpy(mask).int().cuda(),
+            obj_headings.float().cuda(),
+            obj_feats.float().cuda(),
+            mask.int().cuda(),
             sample_indices,
         )
 
@@ -337,24 +343,7 @@ class Seq2SeqAgent(BaseAgent):
         # * ==== Encode object labels ===
         # obj_heads = [batch, num_objs, angle_feat_size]
         # obj_idxs = [batch, num_objs, 3]
-        obj_heads, obj_idxs, obj_mask, sample_indices = self._parse_objs(perm_obs, angle_enc_size=args.angle_feat_size)
-        idx_s = obj_idxs.shape
-
-        # [batch * num_objs, 3]
-        obj_idxs = obj_idxs.view((idx_s[0] * idx_s[1], idx_s[2]))
-
-        # [batch * num_objs, 3, enc_size]
-        enc_obj_idxs, _, _ = self.encoder(obj_idxs, [obj_idxs.shape[1]] * obj_idxs.shape[0])
-
-        # [batch, num_objs, 3, enc_size]
-        # enc_obj_idxs = enc_obj_idxs.view((*idx_s, -1))
-        # eidx_s = enc_obj_idxs.shape
-
-        # [batch, num_objs, 3, enc_size]
-        enc_obj_idxs = enc_obj_idxs.contiguous().view((idx_s[0], idx_s[1], -1))
-
-        # [batch, num_objs, 3 * enc_size]
-        # enc_obj_idxs = enc_obj_idxs.view((eidx_s[0], eidx_s[1], -1))
+        obj_heads, obj_feats, obj_mask, sample_indices = self._parse_objs(perm_obs)
         # * =============================
 
         # Init the reward shaping
@@ -388,13 +377,7 @@ class Seq2SeqAgent(BaseAgent):
         h1 = h_t
         for t in range(self.episode_len):
 
-            (
-                input_a_t,
-                f_t,
-                candidate_feat,
-                angle_feats,
-                candidate_leng,
-            ) = self.get_input_feat(perm_obs)
+            input_a_t, f_t, candidate_feat, angle_feats, candidate_leng = self.get_input_feat(perm_obs)
             if speaker is not None:  # Apply the env drop mask to the feat
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
@@ -426,7 +409,7 @@ class Seq2SeqAgent(BaseAgent):
                 c_t,
                 ctx,
                 obj_heads,
-                enc_obj_idxs,
+                obj_feats,
                 angle_feats,
                 obj_mask=obj_mask,
                 ctx_mask=ctx_mask,
@@ -540,8 +523,9 @@ class Seq2SeqAgent(BaseAgent):
                 c_t,
                 ctx,
                 obj_heads,
-                enc_obj_idxs,
+                obj_feats,
                 angle_feats,
+                obj_mask=obj_mask,
                 ctx_mask=ctx_mask,
                 already_dropfeat=(speaker is not None),
             )

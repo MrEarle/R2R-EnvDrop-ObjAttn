@@ -1,7 +1,7 @@
 """ Batched Room-to-Room navigation environment """
 
 import sys
-from typing import Tuple
+from typing import List, Tuple
 
 metadata_path = "./metadata_parser"
 if metadata_path not in sys.path:
@@ -19,6 +19,9 @@ import json
 import os
 import random
 import networkx as nx
+import h5py
+import torch
+import torchvision
 from param import args
 
 from utils import load_datasets, load_nav_graphs, Tokenizer
@@ -62,6 +65,12 @@ class EnvBatch:
             sim.initialize()
             self.sims.append(sim)
 
+        self.obj_proposals = None
+        with open(args.OBJECT_PROPOSALS) as ar:
+            self.obj_proposals = json.load(ar)
+
+        self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
+
     def _make_id(self, scanId, viewpointId):
         return scanId + "_" + viewpointId
 
@@ -70,6 +79,61 @@ class EnvBatch:
             # print("New episode %d" % i, flush=True)
             # sys.stdout.flush()
             self.sims[i].newEpisode([scanId], [viewpointId], [heading], [0])
+
+    def getViewpointObjects(
+        self, scanId: str, viewpointId: str
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[str]]:
+        """
+        Get the list of object features in the current viewpoint.
+        :param scanId:
+        :param viewpointId:
+        :return: Tensor with the features of each object in the viewpoint
+        """
+        WIDTH = 640
+        HEIGHT = 480
+
+        long_id = f"{scanId}_{viewpointId}"
+        feat = self.object_feat_store[scanId][viewpointId]
+        feat = torch.from_numpy(np.array(feat))
+
+        rad_30 = math.radians(30)
+        bbox_tensor = []
+        orient_tensor = []
+        obj_names = []
+        idx_dict = {}
+        i = 0
+        for view, objs in self.obj_proposals[long_id].items():
+            view = int(view)
+            view_heading_left = (view % 12) * rad_30
+            view_elevation_top = (view // 12) * rad_30 - math.radians(15)
+
+            for idx, obj in objs.items():
+                idx = int(idx)
+                x0, y0, x1, y1 = obj["bbox"]
+
+                if idx not in idx_dict:
+                    idx_dict[idx] = []
+                idx_dict[idx].append(i)
+                i += 1
+
+                bbox_tensor.append([view, x0, y0, x1, y1])
+                obj_names.append(obj["name"])
+
+                c_x, c_y = x1 - x0, y1 - y0
+
+                obj_heading = view_heading_left + ((c_x / WIDTH) * rad_30)
+                obj_elevation = view_elevation_top - ((c_y / HEIGHT) * rad_30)
+                orient_tensor.append([obj_heading, obj_elevation])
+
+        bbox_tensor = torch.from_numpy(np.array(bbox_tensor))
+        orient_tensor = torch.from_numpy(np.array(orient_tensor))
+
+        if len(bbox_tensor) == 0:
+            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 5)), []
+
+        roi = torchvision.ops.roi_pool(feat, bbox_tensor.float(), 2, spatial_scale=1 / 32)
+
+        return roi, orient_tensor, bbox_tensor, obj_names
 
     def getStates(self):
         """
@@ -313,60 +377,31 @@ class R2RBatch:
 
             obj_orients_norm = o_new["orients_normalized"]
 
-            o_new["orients"] = np.array(
+            o_new["orients"] = torch.Tensor(
                 [utils.angle_feature(head - agent_head, elev - agent_el) for head, elev in obj_orients_norm]
             )
             o_new.pop("orients_normalized")
             return o_new
 
-        obj_names, obj_orients = self.__get_viewpoint_object(scanId, viewpointId)
-
-        obj_names = [self.tok.encode_sentence(obj_name) for obj_name in obj_names]
-
-        banned_words = ["<UNK>", "object", "ceiling", "wall", "floor"]
-        valid_indices = [
-            i for i, name in enumerate(obj_names) if not any(self.tok.word_to_index[w] in name for w in banned_words)
-        ]
-
-        obj_names = [obj_names[i] for i in valid_indices]
-        obj_orients = [obj_orients[i] for i in valid_indices]
-        # Include only objects with an encoding
-
-        obj_orients_agent = np.array(
-            [utils.angle_feature(head - agent_head, elev - agent_el) for (head, elev) in obj_orients]
+        roi, orient_tensor, bbox_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
+        obj_orients_agent = torch.Tensor(
+            [utils.angle_feature(head - agent_head, elev - agent_el) for (head, elev) in orient_tensor]
         )
 
-        obj_dict = {"orients": obj_orients_agent, "names": obj_names}
-
-        self.buffered_obj_dict[long_id] = {
-            "orients_normalized": obj_orients,
+        obj_dict = {
+            "feats": roi,
+            "bboxs": bbox_tensor,
             "names": obj_names,
         }
 
+        self.buffered_obj_dict[long_id] = {
+            **obj_dict,
+            "orients_normalized": orient_tensor,
+        }
+
+        obj_dict["orients"] = obj_orients_agent
+
         return obj_dict
-
-    def __get_viewpoint_object(self, scan: str, viewpointId: str) -> Tuple[str, np.ndarray]:
-        """
-        param:
-            scan {str}: Scan Id
-            viewpointId {str}: Viewpoint Id
-        returns:
-            name {str}: Object name
-            orientation {ndarray}: Object orientation relative to the viewpoint.
-            With shape (num_objs, 2) -> [[heading, elevation], ...]
-        """
-        HouseSegmentationFile.base_cache_path = "metadata_parser/house_cache"
-        parser = HouseSegmentationFile.load_mapping(scan)
-        banned_mpcat40_index = (0, 40, 41)
-
-        objects = parser.angle_relative_viewpoint_objects(viewpointId, banned_mpcat40_index)
-        objects = objects.query('category_mapping_name != "unknown"')
-
-        headings = objects["heading"].to_numpy()
-        elevations = objects["elevation"].to_numpy()
-        names = objects["category_mapping_name"].to_list()
-
-        return names, np.stack((headings, elevations), axis=1)
 
     def _get_obs(self):
         obs = []
@@ -399,7 +434,7 @@ class R2RBatch:
                     "instructions": item["instructions"],
                     "teacher": self._shortest_path_action(state, item["path"][-1]),
                     "path_id": item["path_id"],
-                    "objects": objects,  # { names, orients }
+                    "objects": objects,  # { names, orients, feats, bboxs }
                 }
             )
             if "instr_encoding" in item:
