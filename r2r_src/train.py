@@ -67,6 +67,10 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
     listner = Seq2SeqAgent(train_env, "", tok, args.maxAction)
     print("Starting Speaker", flush=True)
     speaker = Speaker(train_env, listner, tok)
+    start_iter = 0
+    if args.speaker is not None:
+        print("Load the speaker from %s." % args.speaker, flush=True)
+        start_iter = speaker.load(args.speaker)
     print("Done Initializing, starting training", flush=True)
 
     if args.fast_train:
@@ -74,7 +78,7 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
 
     best_bleu = defaultdict(lambda: 0)
     best_loss = defaultdict(lambda: 1232)
-    for idx in range(0, n_iters, log_every):
+    for idx in range(start_iter, n_iters, log_every):
         interval = min(log_every, n_iters - idx)
 
         # Train for log_every interval
@@ -112,13 +116,10 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
             if bleu_score > best_bleu[env_name]:
                 best_bleu[env_name] = bleu_score
                 print(
-                    "Save the model with %s BEST env bleu %0.4f"
-                    % (env_name, bleu_score),
+                    "Save the model with %s BEST env bleu %0.4f" % (env_name, bleu_score),
                     flush=True,
                 )
-                speaker.save(
-                    idx, os.path.join(log_dir, "state_dict", "best_%s_bleu" % env_name)
-                )
+                speaker.save(idx, os.path.join(log_dir, "state_dict", "best_%s_bleu" % env_name))
 
             if loss < best_loss[env_name]:
                 best_loss[env_name] = loss
@@ -126,14 +127,11 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
                     "Save the model with %s BEST env loss %0.4f" % (env_name, loss),
                     flush=True,
                 )
-                speaker.save(
-                    idx, os.path.join(log_dir, "state_dict", "best_%s_loss" % env_name)
-                )
+                speaker.save(idx, os.path.join(log_dir, "state_dict", "best_%s_loss" % env_name))
 
             # Screen print out
             print(
-                "Bleu 1: %0.4f Bleu 2: %0.4f, Bleu 3 :%0.4f,  Bleu 4: %0.4f"
-                % tuple(precisions),
+                "Bleu 1: %0.4f Bleu 2: %0.4f, Bleu 3 :%0.4f,  Bleu 4: %0.4f" % tuple(precisions),
                 flush=True,
             )
 
@@ -201,13 +199,9 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
         # Log the training stats to tensorboard
         total = max(sum(listner.logs["total"]), 1)
         length = max(len(listner.logs["critic_loss"]), 1)
-        critic_loss = (
-            sum(listner.logs["critic_loss"]) / total
-        )  # / length / args.batchSize
+        critic_loss = sum(listner.logs["critic_loss"]) / total  # / length / args.batchSize
         entropy = sum(listner.logs["entropy"]) / total  # / length / args.batchSize
-        predict_loss = sum(listner.logs["us_loss"]) / max(
-            len(listner.logs["us_loss"]), 1
-        )
+        predict_loss = sum(listner.logs["us_loss"]) / max(len(listner.logs["us_loss"]), 1)
         writer.add_scalar("loss/critic", critic_loss, idx)
         writer.add_scalar("policy_entropy", entropy, idx)
         writer.add_scalar("loss/unsupervised", predict_loss, idx)
@@ -222,9 +216,7 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
             listner.env = env
 
             # Get validation loss under the same conditions as training
-            iters = (
-                None if args.fast_train or env_name != "train" else 20
-            )  # 20 * 64 = 1280
+            iters = None if args.fast_train or env_name != "train" else 20  # 20 * 64 = 1280
 
             # Get validation distance from goal under test evaluation conditions
             listner.test(use_dropout=False, feedback="argmax", iters=iters)
@@ -246,9 +238,7 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
                 best_val[env_name]["update"] = False
                 listner.save(
                     idx,
-                    os.path.join(
-                        "snap", args.name, "state_dict", "best_%s" % (env_name)
-                    ),
+                    os.path.join("snap", args.name, "state_dict", "best_%s" % (env_name)),
                 )
 
         print(
@@ -270,21 +260,16 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
                 print(env_name, best_val[env_name]["state"], flush=True)
 
         if iter % 50000 == 0:
-            listner.save(
-                idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter))
-            )
+            listner.save(idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
 
-    listner.save(
-        idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx))
-    )
+    listner.save(idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
 
 
 def valid(train_env, tok, val_envs={}):
     agent = Seq2SeqAgent(train_env, "", tok, args.maxAction)
 
     print(
-        "Loaded the listener model at iter %d from %s"
-        % (agent.load(args.load), args.load),
+        "Loaded the listener model at iter %d from %s" % (agent.load(args.load), args.load),
         flush=True,
     )
 
@@ -321,9 +306,7 @@ def beam_valid(train_env, tok, val_envs={}):
         print("Load the speaker from %s." % args.speaker, flush=True)
         speaker.load(args.speaker)
 
-    print(
-        "Loaded the listener model at iter % d" % listener.load(args.load), flush=True
-    )
+    print("Loaded the listener model at iter % d" % listener.load(args.load), flush=True)
 
     final_log = ""
     for env_name, (env, evaluator) in val_envs.items():
@@ -358,9 +341,7 @@ def beam_valid(train_env, tok, val_envs={}):
                                     "instr_id": key,
                                     "trajectory": max(
                                         results[key]["paths"],
-                                        key=lambda x: cal_score(
-                                            x, alpha, avg_speaker, avg_listener
-                                        ),
+                                        key=lambda x: cal_score(x, alpha, avg_speaker, avg_listener),
                                     )["trajectory"],
                                 }
                             )
@@ -397,9 +378,7 @@ def beam_valid(train_env, tok, val_envs={}):
                         "trajectory": [(vp, 0, 0) for vp in results[key]["dijk_path"]]
                         + max(
                             results[key]["paths"],
-                            key=lambda x: cal_score(
-                                x, alpha, avg_speaker, avg_listener
-                            ),
+                            key=lambda x: cal_score(x, alpha, avg_speaker, avg_listener),
                         )["trajectory"],
                     }
                 )
@@ -437,9 +416,7 @@ def setup():
     if not os.path.exists(TRAIN_VOCAB):
         write_vocab(build_vocab(splits=["train"]), TRAIN_VOCAB)
     if not os.path.exists(TRAINVAL_VOCAB):
-        write_vocab(
-            build_vocab(splits=["train", "val_seen", "val_unseen"]), TRAINVAL_VOCAB
-        )
+        write_vocab(build_vocab(splits=["train", "val_seen", "val_unseen"]), TRAINVAL_VOCAB)
 
 
 def train_val():
@@ -454,9 +431,7 @@ def train_val():
 
     featurized_scans = set([key.split("_")[0] for key in list(feat_dict.keys())])
 
-    train_env = R2RBatch(
-        feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok
-    )
+    train_env = R2RBatch(feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
     from collections import OrderedDict
 
     val_env_names = ["val_unseen", "val_seen"]
@@ -546,9 +521,7 @@ def train_val_augment():
     aug_path = args.aug
 
     # Create the training environment
-    train_env = R2RBatch(
-        feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok
-    )
+    train_env = R2RBatch(feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
     aug_env = R2RBatch(
         feat_dict,
         batch_size=args.batchSize,
@@ -582,9 +555,7 @@ def train_val_augment():
     # Setup the validation data
     val_envs = {
         split: (
-            R2RBatch(
-                feat_dict, batch_size=args.batchSize, splits=[split], tokenizer=tok
-            ),
+            R2RBatch(feat_dict, batch_size=args.batchSize, splits=[split], tokenizer=tok),
             Evaluation([split], featurized_scans, tok),
         )
         for split in ["train", "val_seen", "val_unseen"]

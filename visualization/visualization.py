@@ -334,3 +334,103 @@ def plot_attention(x_labels=None, y_labels=None, attn=None, map_attention=None):
     ax.set_title("")
 
     plt.show()
+
+
+def plot_viewpoint_objs2(info, scanId, viewpointId):
+    WIDTH = 640
+    HEIGHT = 480
+    VFOV = 60
+    sim = MatterSim.Simulator()
+    sim.setCameraResolution(WIDTH, HEIGHT)
+    sim.setCameraVFOV(np.radians(VFOV))
+    sim.setDiscretizedViewingAngles(True)
+    sim.setBatchSize(1)
+    sim.initialize()
+
+    def transform_img(im):
+        """Prep opencv 3 channel image for the network"""
+        im = np.array(im, copy=True)
+        im_orig = im.astype(np.float32, copy=True)
+        blob = np.zeros((1, im.shape[0], im.shape[1], 3), dtype=np.float32)
+        blob[0, :, :, :] = im_orig[..., ::-1]
+        blob = blob / 255.0
+        # blob = preprocess(blob)
+        return blob
+
+    fig, axes = plt.subplots(nrows=3, ncols=12, figsize=(32, 8), gridspec_kw={"wspace": 0.1, "hspace": 0.01})
+
+    bbox_style = dict(boxstyle="round", fc="w", ec="0.5", alpha=0.5)
+    start_ix = 0
+    for ix in range(36):
+        if ix == 0:
+            sim.newEpisode([scanId], [viewpointId], [info["heading"] - np.radians(-175)], [np.radians(-30)])
+            start_ix = sim.getState()[0].viewIndex
+        elif ix % 12 == 0:
+            sim.makeAction([0], [1.0], [1.0])
+        else:
+            sim.makeAction([0], [1.0], [0])
+
+        state = sim.getState()[0]
+        # assert state.viewIndex == ix
+
+        # Transform and save generated image
+        blob = transform_img(state.rgb)
+
+        _h = (state.viewIndex - start_ix) % 12
+        if _h < 0:
+            _h += 12
+
+        _e = (state.viewIndex) // 12
+        _e = 2 - _e
+
+        ax = axes[_e, _h]
+        ax.imshow(blob[0])
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        view_objects = parse_objs_into_views(info)
+
+        for name, heading, elevation in view_objects[state.viewIndex]:
+            h_min = (state.viewIndex % 12) * np.radians(30)
+            e_min = (state.viewIndex // 12) * np.radians(30) - np.radians(60)
+
+            x = (heading - h_min) / np.radians(30) * WIDTH
+            y = (elevation - e_min) / np.radians(30) * HEIGHT
+
+            print(heading - h_min, elevation - e_min)
+
+            ax.plot(x, y, color="red", marker="v", linewidth=3)
+            ax.annotate(name, (x, y), bbox=bbox_style)
+
+    plt.show()
+
+
+def parse_objs_into_views(info):
+    objects, _ = get_objects(info["scan"], info["viewpoint"])
+
+    views = {i: [] for i in range(36)}
+    for obj in objects.itertuples():
+        heading, elevation = float(obj.heading), float(obj.elevation)
+        category = obj.category_mapping_name
+
+        while heading < 0:
+            heading += 2 * np.pi
+        while heading > 2 * np.pi:
+            heading -= 2 * np.pi
+
+        while elevation < -np.pi:
+            elevation += 2 * np.pi
+        while elevation > np.pi:
+            elevation -= 2 * np.pi
+
+        x_view = int((heading / (2 * np.pi)) * 12) % 12
+        y_view = int((elevation / (np.pi / 2)) * 3) % 3
+
+        if not (-np.pi / 2 + 2 * y_view * np.pi / 3 <= elevation <= -np.pi / 2 + 2 * (y_view + 1) * np.pi / 3):
+            print("weird", (x_view, y_view), (heading, elevation))
+
+        index = x_view + y_view * 12
+        views[index].append((category, heading, elevation))
+
+    return views

@@ -427,7 +427,7 @@ class Seq2SeqAgent(BaseAgent):
                     for c_id, c in enumerate(ob["candidate"]):
                         if c["viewpointId"] in visited[ob_id]:
                             candidate_mask[ob_id][c_id] = 1
-            logit.masked_fill_(candidate_mask, -float("inf"))
+            logit.masked_fill_(candidate_mask.bool(), -float("inf"))
 
             # Supervised training
             target = self._teacher_action(perm_obs, ended)
@@ -719,7 +719,7 @@ class Seq2SeqAgent(BaseAgent):
 
             # Update the dijk graph's states with the newly visited viewpoint
             candidate_mask = utils.length2mask(candidate_leng)
-            logit.masked_fill_(candidate_mask, -float("inf"))
+            logit.masked_fill_(candidate_mask.bool(), -float("inf"))
             log_probs = F.log_softmax(logit, 1)  # Calculate the log_prob here
             _, max_act = log_probs.max(1)
 

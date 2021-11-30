@@ -42,12 +42,8 @@ def load_nav_graphs(scans):
                 if item["included"]:
                     for j, conn in enumerate(item["unobstructed"]):
                         if conn and data[j]["included"]:
-                            positions[item["image_id"]] = np.array(
-                                [item["pose"][3], item["pose"][7], item["pose"][11]]
-                            )
-                            assert data[j]["unobstructed"][
-                                i
-                            ], "Graph should be undirected"
+                            positions[item["image_id"]] = np.array([item["pose"][3], item["pose"][7], item["pose"][11]])
+                            assert data[j]["unobstructed"][i], "Graph should be undirected"
                             G.add_edge(
                                 item["image_id"],
                                 data[j]["image_id"],
@@ -79,8 +75,13 @@ def load_datasets(splits):
         # Load Json
         # if split in ['train', 'val_seen', 'val_unseen', 'test',
         #              'val_unseen_half1', 'val_unseen_half2', 'val_seen_half1', 'val_seen_half2']:       # Add two halves for sanity check
+        if args.dataset.upper() == "R2R":
+            base_path = "tasks/R2R/data/R2R_%s.json"
+        else:
+            base_path = "tasks/R2R/data/rxr_%s.json"
+
         if "/" not in split:
-            with open("tasks/R2R/data/R2R_%s.json" % split) as f:
+            with open(base_path % split) as f:
                 new_data = json.load(f)
         else:
             with open(split) as f:
@@ -101,9 +102,7 @@ def load_datasets(splits):
 class Tokenizer(object):
     """Class to tokenize and encode a sentence."""
 
-    SENTENCE_SPLIT_REGEX = re.compile(
-        r"(\W+)"
-    )  # Split on any non-alphanumeric character
+    SENTENCE_SPLIT_REGEX = re.compile(r"(\W+)")  # Split on any non-alphanumeric character
 
     def __init__(self, vocab=None, encoding_length=20):
         self.encoding_length = encoding_length
@@ -147,14 +146,10 @@ class Tokenizer(object):
         """Break sentence into a list of words and punctuation"""
         toks = []
         for word in [
-            s.strip().lower()
-            for s in Tokenizer.SENTENCE_SPLIT_REGEX.split(sentence.strip())
-            if len(s.strip()) > 0
+            s.strip().lower() for s in Tokenizer.SENTENCE_SPLIT_REGEX.split(sentence.strip()) if len(s.strip()) > 0
         ]:
             # Break up any words containing punctuation only, e.g. '!?', unless it is multiple full stops e.g. '..'
-            if all(c in string.punctuation for c in word) and not all(
-                c in "." for c in word
-            ):
+            if all(c in string.punctuation for c in word) and not all(c in "." for c in word):
                 toks += list(word)
             else:
                 toks.append(word)
@@ -179,13 +174,9 @@ class Tokenizer(object):
         # assert len(encoding) > 2
 
         if len(encoding) < max_length:
-            encoding += [self.word_to_index["<PAD>"]] * (
-                max_length - len(encoding)
-            )  # Padding
+            encoding += [self.word_to_index["<PAD>"]] * (max_length - len(encoding))  # Padding
         elif len(encoding) > max_length:
-            encoding[max_length - 1] = self.word_to_index[
-                "<EOS>"
-            ]  # Cut the length with EOS
+            encoding[max_length - 1] = self.word_to_index["<EOS>"]  # Cut the length with EOS
 
         return np.array(encoding[:max_length])
 
@@ -208,9 +199,7 @@ class Tokenizer(object):
         """
         if len(inst) == 0:
             return inst
-        end = np.argmax(
-            np.array(inst) == self.word_to_index["<EOS>"]
-        )  # If no <EOS>, return empty string
+        end = np.argmax(np.array(inst) == self.word_to_index["<EOS>"])  # If no <EOS>, return empty string
         if len(inst) > 1 and inst[0] == self.word_to_index["<BOS>"]:
             start = 1
         else:
@@ -291,8 +280,7 @@ def read_img_features(feature_store):
             )  # Feature of long_id is (36, 2048)
 
     print(
-        "Finish Loading the image feature from %s in %0.4f seconds"
-        % (feature_store, time.time() - start),
+        "Finish Loading the image feature from %s in %0.4f seconds" % (feature_store, time.time() - start),
         flush=True,
     )
     return features
@@ -330,8 +318,7 @@ def read_candidates(candidates_store):
                     "scanId": item["scanId"],
                     "viewpointId": item["next"],
                     "pointId": int(item["pointId"]),
-                    "idx": int(item["idx"])
-                    + 1,  # Because a bug in the precompute code, here +1 is important
+                    "idx": int(item["idx"]) + 1,  # Because a bug in the precompute code, here +1 is important
                     "feature": np.frombuffer(
                         base64.decodestring(item["feature"].encode("ascii")),
                         dtype=np.float32,
@@ -348,8 +335,7 @@ def read_candidates(candidates_store):
     # candidate = candidates[long_id]
     # print(candidate, flush=True)
     print(
-        "Finish Loading the candidates from %s in %0.4f seconds"
-        % (candidates_store, time.time() - start),
+        "Finish Loading the candidates from %s in %0.4f seconds" % (candidates_store, time.time() - start),
         flush=True,
     )
     candidates = dict(candidates)
@@ -371,8 +357,7 @@ def angle_feature(heading, elevation):
     # heading = (heading + twopi) % twopi     # From 0 ~ 2pi
     # It will be the same
     return np.array(
-        [math.sin(heading), math.cos(heading), math.sin(elevation), math.cos(elevation)]
-        * (args.angle_feat_size // 4),
+        [math.sin(heading), math.cos(heading), math.sin(elevation), math.cos(elevation)] * (args.angle_feat_size // 4),
         dtype=np.float32,
     )
 
@@ -493,14 +478,10 @@ stop_word_list = [",", ".", "and", "?", "!"]
 
 def stop_words_location(inst, mask=False):
     toks = Tokenizer.split_sentence(inst)
-    sws = [
-        i for i, tok in enumerate(toks) if tok in stop_word_list
-    ]  # The index of the stop words
+    sws = [i for i, tok in enumerate(toks) if tok in stop_word_list]  # The index of the stop words
     if len(sws) == 0 or sws[-1] != (len(toks) - 1):  # Add the index of the last token
         sws.append(len(toks) - 1)
-    sws = [x for x, y in zip(sws[:-1], sws[1:]) if x + 1 != y] + [
-        sws[-1]
-    ]  # Filter the adjacent stop word
+    sws = [x for x, y in zip(sws[:-1], sws[1:]) if x + 1 != y] + [sws[-1]]  # Filter the adjacent stop word
     sws_mask = np.ones(len(toks), np.int32)  # Create the mask
     sws_mask[sws] = 0
     return sws_mask if mask else sws
@@ -508,16 +489,10 @@ def stop_words_location(inst, mask=False):
 
 def get_segments(inst, mask=False):
     toks = Tokenizer.split_sentence(inst)
-    sws = [
-        i for i, tok in enumerate(toks) if tok in stop_word_list
-    ]  # The index of the stop words
+    sws = [i for i, tok in enumerate(toks) if tok in stop_word_list]  # The index of the stop words
     sws = [-1] + sws + [len(toks)]  # Add the <start> and <end> positions
-    segments = [
-        toks[sws[i] + 1 : sws[i + 1]] for i in range(len(sws) - 1)
-    ]  # Slice the segments from the tokens
-    segments = list(
-        filter(lambda x: len(x) > 0, segments)
-    )  # remove the consecutive stop words
+    segments = [toks[sws[i] + 1 : sws[i + 1]] for i in range(len(sws) - 1)]  # Slice the segments from the tokens
+    segments = list(filter(lambda x: len(x) > 0, segments))  # remove the consecutive stop words
     return segments
 
 
@@ -566,12 +541,7 @@ def average_length(path2inst):
 
 def tile_batch(tensor, multiplier):
     _, *s = tensor.size()
-    tensor = (
-        tensor.unsqueeze(1)
-        .expand(-1, multiplier, *(-1,) * len(s))
-        .contiguous()
-        .view(-1, *s)
-    )
+    tensor = tensor.unsqueeze(1).expand(-1, multiplier, *(-1,) * len(s)).contiguous().view(-1, *s)
     return tensor
 
 

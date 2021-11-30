@@ -5,7 +5,7 @@ name=agent_bt_obj_visual_mask
 flag="--attn soft --train auglistener --selfTrain
       --aug tasks/R2R/data/aug_paths.json
       --speaker snap/speaker_obj_pruned/state_dict/best_val_unseen_bleu 
-      --load snap/agent_obj_visual_mask/state_dict/best_val_unseen
+      --load snap/agent_bt_obj_visual_mask/state_dict/best_val_unseen
       --angleFeatSize 128
       --accumulateGrad
       --featdropout 0.4
