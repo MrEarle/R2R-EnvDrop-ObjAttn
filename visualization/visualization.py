@@ -147,7 +147,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
 
-def plot_viewpoint_objs(info, scanId, viewpointId, attn):
+def plot_viewpoint_objs_reverie(info, scanId, viewpointId, attn):
     WIDTH = 640
     HEIGHT = 480
     VFOV = 60
@@ -223,6 +223,106 @@ def plot_viewpoint_objs(info, scanId, viewpointId, attn):
     plt.show()
 
 
+def plot_viewpoint_objs_matterport(scanId, viewpointId):
+    WIDTH = 640
+    HEIGHT = 480
+    VFOV = 60
+    sim = MatterSim.Simulator()
+    sim.setCameraResolution(WIDTH, HEIGHT)
+    sim.setCameraVFOV(np.radians(VFOV))
+    sim.setDiscretizedViewingAngles(True)
+    sim.setBatchSize(1)
+    sim.initialize()
+
+    def transform_img(im):
+        """Prep opencv 3 channel image for the network"""
+        im = np.array(im, copy=True)
+        im_orig = im.astype(np.float32, copy=True)
+        blob = np.zeros((1, im.shape[0], im.shape[1], 3), dtype=np.float32)
+        blob[0, :, :, :] = im_orig[..., ::-1]
+        blob = blob.transpose((0, 3, 1, 2)) / 255.0
+        blob = torch.from_numpy(blob)
+        # blob = preprocess(blob)
+        return blob
+
+    blobs = []
+    for ix in range(36):
+        if ix == 0:
+            sim.newEpisode([scanId], [viewpointId], [0], [np.radians(-30)])
+        elif ix % 12 == 0:
+            sim.makeAction([0], [1.0], [1.0])
+        else:
+            sim.makeAction([0], [1.0], [0])
+
+        state = sim.getState()[0]
+        assert state.viewIndex == ix
+
+        # Transform and save generated image
+        min_h, max_h = state.heading - np.radians(30), state.heading + np.radians(30)
+        min_e, max_e = state.elevation - np.radians(30), state.elevation + np.radians(30)
+
+        while min_h < -np.pi:
+            min_h += 2 * np.pi
+        while max_h > np.pi:
+            max_h -= 2 * np.pi
+
+        blobs.append((transform_img(state.rgb), (min_h, max_h, min_e, max_e)))
+
+    fig, axes = plt.subplots(nrows=3, ncols=12, figsize=(32, 8), gridspec_kw={"wspace": 0.1, "hspace": 0.01})
+
+    objects, _ = get_objects(scanId, viewpointId)
+    for ix, blob in enumerate(blobs):
+        _h = ix % 12
+        _e = 2 - (ix // 12)
+        ax = axes[_e, _h]
+
+        im, (min_h, max_h, min_e, max_e) = blob
+
+        # __min_h, __max_h = (_h - 1) * np.radians(30), (_h + 1) * np.radians(30)
+        # __min_e, __max_e = (2 - _e) * np.radians(30), (2 - (_e + 1)) * np.radians(30)
+
+        # if min_h != __min_h or max_h != __max_h or min_e != __min_e or max_e != __max_e:
+        #     print("Err:", ix, min_h, max_h, min_e, max_e, __min_h, __max_h, __min_e, __max_e)
+
+        ax.imshow(im[0].permute(1, 2, 0).numpy())
+
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        for i, obj in enumerate(objects.itertuples()):
+            heading, elevation = float(obj.heading), float(obj.elevation)
+            category = obj.category_mapping_name
+
+            if min_h < max_h and (min_h < heading < max_h):
+                x = int(((heading - min_h) / (max_h - min_h)) * WIDTH)
+            elif min_h > max_h and (heading > min_h or heading < max_h):
+                _max_h = max_h + 2 * np.pi
+                _heading = heading
+                if heading < max_h:
+                    _heading = 2 * np.pi + heading
+
+                x = int(((_heading - min_h) / (_max_h - min_h)) * WIDTH)
+
+                if x > WIDTH or x < 0:
+                    continue
+            else:
+                continue
+
+            if min_e < elevation < max_e:
+                y = (elevation - min_e) / (max_e - min_e)
+                y = int((1 - y) * HEIGHT)
+                # y = HEIGHT - y
+            else:
+                continue
+
+            ax.plot(x, y, "v", color="red", markersize=3)
+
+            color = "w"
+            bbox_style = dict(boxstyle="round", fc=color, ec="0.5", alpha=0.5)
+            ax.annotate(category, (x, y), bbox=bbox_style, color="black")
+    plt.show()
+
+
 def plot_matterport_objs_with_traj(info, trajectory, instruction, viewpoint_attn, viewpoint_indices):
     scan = info["scan"]
     viewpoint = info["viewpoint"]
@@ -268,6 +368,7 @@ def plot_matterport_objs_with_traj(info, trajectory, instruction, viewpoint_attn
         plt.plot(first_coord, second_coord, color="red", marker="v", linewidth=3)
         plt.annotate(category, (first_coord, second_coord), bbox=bbox_style)
 
+    viewpoint_mapping = {"STOP": "STOP"}
     for i, reachable_viewpoint in enumerate(reachable_viewpoints.itertuples()):
         heading, elevation = float(reachable_viewpoint.heading), float(reachable_viewpoint.elevation)
 
@@ -298,12 +399,15 @@ def plot_matterport_objs_with_traj(info, trajectory, instruction, viewpoint_attn
             markersize=50 / reachable_viewpoint.distance,
             linewidth=1,
         )
-        plt.annotate(i, (first_coord, second_coord), bbox=bbox_style)
+        plt.annotate(i, (first_coord, second_coord), bbox=bbox_style, color="black")
         print(i, reachable_viewpoint.name, reachable_viewpoint.name in trajectory)
+
+        viewpoint_mapping[reachable_viewpoint.name] = i
 
     print(instruction)
 
     plt.show()
+    return viewpoint_mapping
 
 
 def plot_attention(x_labels=None, y_labels=None, attn=None, map_attention=None):

@@ -7,6 +7,7 @@ metadata_path = "./metadata_parser"
 if metadata_path not in sys.path:
     sys.path.append(metadata_path)
 from parse_house_segmentations import HouseSegmentationFile
+from obj_utils import get_obj_coords
 
 sys.path.append("buildpy36")
 import MatterSim
@@ -65,9 +66,9 @@ class EnvBatch:
             sim.initialize()
             self.sims.append(sim)
 
-        self.obj_proposals = None
-        with open(args.OBJECT_PROPOSALS) as ar:
-            self.obj_proposals = json.load(ar)
+        self.house_seg_file_base_path = "./metadata_parser/house_cache"
+        HouseSegmentationFile.base_cache_path = self.house_seg_file_base_path
+        self.banned_obj_class = ["object", "floor", "wall", "ceiling"]
 
         self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
 
@@ -92,48 +93,55 @@ class EnvBatch:
         WIDTH = 640
         HEIGHT = 480
 
-        long_id = f"{scanId}_{viewpointId}"
         feat = self.object_feat_store[scanId][viewpointId]
         feat = torch.from_numpy(np.array(feat))
 
-        rad_30 = math.radians(30)
-        bbox_tensor = []
+        pos_tensor = []
         orient_tensor = []
         obj_names = []
-        idx_dict = {}
-        i = 0
-        for view, objs in self.obj_proposals[long_id].items():
-            view = int(view)
-            view_heading_left = (view % 12) * rad_30
-            view_elevation_top = (view // 12) * rad_30 - math.radians(15)
 
-            for idx, obj in objs.items():
-                idx = int(idx)
-                x0, y0, x1, y1 = obj["bbox"]
+        metadata = HouseSegmentationFile.load_mapping(scanId)
+        banned_mpcat40_index = (0, 40, 41)
+        objects = metadata.angle_relative_viewpoint_objects(viewpointId, banned_mpcat40_index)
 
-                if idx not in idx_dict:
-                    idx_dict[idx] = []
-                idx_dict[idx].append(i)
-                i += 1
+        for ix in range(36):
+            for obj in objects.itertuples():
+                heading, elevation = float(obj.heading), float(obj.elevation)
+                category = obj.category_mapping_name
 
-                bbox_tensor.append([view, x0, y0, x1, y1])
-                obj_names.append(obj["name"])
+                x, y = get_obj_coords(ix, elevation, heading, WIDTH=WIDTH, HEIGHT=HEIGHT)
 
-                c_x, c_y = x1 - x0, y1 - y0
+                if x is None or y is None:
+                    continue
 
-                obj_heading = view_heading_left + ((c_x / WIDTH) * rad_30)
-                obj_elevation = view_elevation_top - ((c_y / HEIGHT) * rad_30)
-                orient_tensor.append([obj_heading, obj_elevation])
+                x_roi, y_roi = x // 32, y // 32
 
-        bbox_tensor = torch.from_numpy(np.array(bbox_tensor))
+                pos_tensor.append([ix, x_roi, y_roi])
+                obj_names.append(category)
+
+                orient_tensor.append([heading, elevation])
         orient_tensor = torch.from_numpy(np.array(orient_tensor))
 
-        if len(bbox_tensor) == 0:
-            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 5)), []
+        if len(pos_tensor) == 0:
+            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
 
-        roi = torchvision.ops.roi_pool(feat, bbox_tensor.float(), 2, spatial_scale=1 / 32)
+        roi = []
+        valid_indices = []
+        for i, (view, x1, y1) in enumerate(pos_tensor):
+            x2 = x1 + 1
+            y2 = y1 + 1
+            if x2 >= WIDTH // 32 or y2 >= HEIGHT // 32:
+                continue
+            valid_indices.append(i)
+            roi.append(feat[view, :, y1 : y2 + 1, x1 : x2 + 1])
 
-        return roi, orient_tensor, bbox_tensor, obj_names
+        obj_names = [obj_names[i] for i in valid_indices]
+        valid_indices = torch.LongTensor(valid_indices)
+        roi = torch.stack(roi, dim=0)
+        pos_tensor = torch.Tensor(pos_tensor).index_select(0, valid_indices)
+        orient_tensor = orient_tensor.index_select(0, valid_indices)
+
+        return roi, orient_tensor, pos_tensor, obj_names
 
     def getStates(self):
         """
@@ -383,14 +391,28 @@ class R2RBatch:
             o_new.pop("orients_normalized")
             return o_new
 
-        roi, orient_tensor, bbox_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
+        roi, orient_tensor, pos_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
+
+        obj_names_ = [self.tok.encode_sentence(obj_name) for obj_name in obj_names]
+
+        banned_words = ["<UNK>", "object", "ceiling", "wall", "floor", "remove"]
+        valid_indices = [
+            i for i, name in enumerate(obj_names_) if not any(self.tok.word_to_index[w] in name for w in banned_words)
+        ]
+        obj_names = [obj_names[i] for i in valid_indices]
+
+        valid_indices = torch.LongTensor(valid_indices)
+        orient_tensor = orient_tensor.index_select(0, valid_indices)
+        pos_tensor = pos_tensor.index_select(0, valid_indices)
+        roi = roi.index_select(0, valid_indices)
+
         obj_orients_agent = torch.Tensor(
             [utils.angle_feature(head - agent_head, elev - agent_el) for (head, elev) in orient_tensor]
         )
 
         obj_dict = {
             "feats": roi,
-            "bboxs": bbox_tensor,
+            "bboxs": pos_tensor,
             "names": obj_names,
         }
 

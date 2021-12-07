@@ -4,15 +4,16 @@
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/agent_out-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --error=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/agent_err.log     # Output errors (optional)
 #SBATCH --partition=ialab-high
-#SBATCH --nodelist=scylla
+#SBATCH --nodelist=grievous
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
 #SBATCH --gres=gpu
 #SBATCH --time=3-00:00
-#SBATCH --mem=32gb
+#SBATCH --mem=50gb
 
 pwd; hostname; date
 
 source /home/mrearle/venvs/r2r/bin/activate
 
+export HDF5_USE_FILE_LOCKING="FALSE"
 echo "Starting agent training"
 bash /home/mrearle/repos/R2R-EnvDrop-ObjAttn/run/agent.bash 0
