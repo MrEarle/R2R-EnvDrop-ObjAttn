@@ -66,11 +66,9 @@ class EnvBatch:
             sim.initialize()
             self.sims.append(sim)
 
-        self.house_seg_file_base_path = "./metadata_parser/house_cache"
-        HouseSegmentationFile.base_cache_path = self.house_seg_file_base_path
-        self.banned_obj_class = ["object", "floor", "wall", "ceiling"]
-
         self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
+        self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
+        self.first_iter_done = False
 
     def _make_id(self, scanId, viewpointId):
         return scanId + "_" + viewpointId
@@ -100,14 +98,12 @@ class EnvBatch:
         orient_tensor = []
         obj_names = []
 
-        metadata = HouseSegmentationFile.load_mapping(scanId)
-        banned_mpcat40_index = (0, 40, 41)
-        objects = metadata.angle_relative_viewpoint_objects(viewpointId, banned_mpcat40_index)
+        object_ds = self.object_info_store[scanId][viewpointId]
 
         for ix in range(36):
-            for obj in objects.itertuples():
-                heading, elevation = float(obj.heading), float(obj.elevation)
-                category = obj.category_mapping_name
+            for (heading, elevation), bin_name in zip(object_ds["orientations"], object_ds["names"]):
+                heading, elevation = float(heading), float(elevation)
+                category = bin_name.decode("utf-8")
 
                 x, y = get_obj_coords(ix, elevation, heading, WIDTH=WIDTH, HEIGHT=HEIGHT)
 
@@ -122,9 +118,6 @@ class EnvBatch:
                 orient_tensor.append([heading, elevation])
         orient_tensor = torch.from_numpy(np.array(orient_tensor))
 
-        if len(pos_tensor) == 0:
-            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
-
         roi = []
         valid_indices = []
         for i, (view, x1, y1) in enumerate(pos_tensor):
@@ -134,6 +127,16 @@ class EnvBatch:
                 continue
             valid_indices.append(i)
             roi.append(feat[view, :, y1 : y2 + 1, x1 : x2 + 1])
+
+        if len(roi) == 0:
+            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
+
+        if not self.first_iter_done:
+            self.first_iter_done = True
+            print(
+                f"First object processinig done. Num objects processed for viewpoint id {viewpointId}: {len(roi)}",
+                flush=True,
+            )
 
         obj_names = [obj_names[i] for i in valid_indices]
         valid_indices = torch.LongTensor(valid_indices)

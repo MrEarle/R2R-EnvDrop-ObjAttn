@@ -1,6 +1,5 @@
-name=agent_obj_visual_matt
+name=agent_obj_visual_matt_no_conn
 flag="--attn soft --train listener 
-      --load snap/agent_obj_visual_matt/state_dict/best_val_unseen
       --featdropout 0.3
       --angleFeatSize 128
       --feedback sample

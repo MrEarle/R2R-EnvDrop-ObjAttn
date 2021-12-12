@@ -147,7 +147,8 @@ class Param:
 # args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
 # args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
 # args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
-# args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/objProposals.json"
+# args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
+# args.obj_attn_type = "no_connection"
 # args.dataset = "R2R"
 # args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
 # args.log_dir = "snap/%s" % args.name
@@ -155,3 +156,5 @@ class Param:
 # if not os.path.exists(args.log_dir):
 #     os.makedirs(args.log_dir)
 # DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+
+# print(f"\n\n\tTraining model {args.name}\n\n", flush=True)

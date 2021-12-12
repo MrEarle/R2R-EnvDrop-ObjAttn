@@ -4,7 +4,7 @@ from torch.autograd import Variable
 import torch.nn.functional as F
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from param import args
-from obj_attention import ConnectionwiseObjectAttention
+from obj_attention import get_object_attention_class
 
 
 class EncoderLSTM(nn.Module):
@@ -162,7 +162,9 @@ class AttnDecoderLSTM(nn.Module):
         self.candidate_att_layer = SoftDotAttention(hidden_size, feature_size + obj_attn_size)
 
         # * === Object Attention ===
-        self.connectionwise_obj_attn = ConnectionwiseObjectAttention(obj_attn_size=obj_attn_size)
+        ObjAttnClass = get_object_attention_class()
+        self.connectionwise_obj_attn = ObjAttnClass(obj_attn_size=obj_attn_size)
+        print("ObjAttention: Using class {}".format(type(self.connectionwise_obj_attn).__name__), flush=True)
         # * ========================
 
     def forward(

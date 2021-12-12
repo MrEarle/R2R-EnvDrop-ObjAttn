@@ -1,7 +1,11 @@
+from abc import abstractmethod
 from typing import Tuple
+
+import numpy as np
 import torch
 from torch import Tensor, nn
-import numpy as np
+
+from param import args
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -158,7 +162,7 @@ class ObjectHeadingViewpointSimilarity(nn.Module):
         return weighted_objects
 
 
-class ConnectionwiseObjectAttention(nn.Module):
+class BaseObjAttn(nn.Module):
     def __init__(self, obj_attn_size=256):
         super().__init__()
 
@@ -170,6 +174,23 @@ class ConnectionwiseObjectAttention(nn.Module):
         self._obj_viewpoint_similarity = ObjectHeadingViewpointSimilarity()
         self._obj_attention = ObjectAttention(object_attention_size=obj_attn_size)
         self.traj_info = None
+
+    @abstractmethod
+    def forward(
+        self,
+        object_headings: Tensor,
+        object_feats: Tensor,
+        viewpoint_heading: Tensor,
+        text_context: Tensor,
+        obj_mask: Tensor = None,
+    ) -> Tuple[Tensor, Tensor]:
+        pass
+
+
+class ConnectionwiseObjectAttention(BaseObjAttn):
+    def __init__(self, obj_attn_size=256):
+        super().__init__(obj_attn_size)
+        self._obj_viewpoint_similarity = ObjectHeadingViewpointSimilarity()
 
     def forward(
         self,
@@ -217,10 +238,7 @@ class ConnectionwiseObjectAttention(nn.Module):
         attn_weights = []  # [[batch, 1, num_objs] * num_viewpoints]
         for view_id in range(viewpoint_objs.shape[1]):
             objs = torch.cat(
-                [
-                    viewpoint_objs[:, view_id, :, :],
-                    object_headings,
-                ],
+                [viewpoint_objs[:, view_id, :, :], object_headings],
                 dim=-1,
             )
 
@@ -237,3 +255,56 @@ class ConnectionwiseObjectAttention(nn.Module):
         attn_weights = torch.stack(attn_weights, dim=1)
 
         return attended_objects, attn_weights
+
+
+class NoConnectionObjectAttention(BaseObjAttn):
+    def forward(
+        self,
+        object_headings: Tensor,
+        object_feats: Tensor,
+        viewpoint_heading: Tensor,
+        text_context: Tensor,
+        obj_mask: Tensor = None,
+    ) -> Tuple[Tensor, Tensor]:
+        """
+        Parameters:
+            object_headings:
+                shape: [batch, num_objs, direction_feats]
+            object_feats:
+                shape:  [batch, num_objs, 2048, 2, 2]
+            viewpoint_heading:
+                shape: [batch, num_viewpoints, viewpoint_heading_feat]
+            text_context:
+                shape: [batch, txt_context_shape]
+            obj_mask:
+                shape: [batch, num_objs]
+        """
+
+        # Flatten to use num_objs as batch. [batch * num_objs, 2048, 2, 2]
+        o_shape = object_feats.shape
+        object_feats = object_feats.view((-1, *o_shape[2:]))
+
+        # Reduce object features to [batch * num_objs, obj_attn_size, 2, 2]
+        reduced_feats = self.obj_feat_reducer(object_feats)
+
+        # Restore batch and num_objs, and flatten. [batch, num_objs, obj_attn_size * 4 (1024)]
+        reduced_feats = reduced_feats.view((o_shape[0], o_shape[1], -1))
+
+        # [batch, num_objs, obj_feat_size + angle_feat_size]
+        objs = torch.cat((reduced_feats, object_headings), dim=-1)
+
+        # [batch, 1, self.obj_attn_size], [batch, 1, num_objs]
+        attended_objects, attn_weights = self._obj_attention(objs, text_context, obj_mask=obj_mask)
+
+        # [batch, num_viewpoints, self.obj_attn_size]
+        attended_objects = torch.repeat_interleave(attended_objects, viewpoint_heading.shape[1], 1)
+        # [batch, num_viewpoints, num_objs]
+        attn_weights = torch.repeat_interleave(attn_weights, viewpoint_heading.shape[1], 1)
+
+        return attended_objects, attn_weights
+
+
+def get_object_attention_class() -> BaseObjAttn:
+    if args.obj_attn_type == "no_connection":
+        return NoConnectionObjectAttention
+    return ConnectionwiseObjectAttention
