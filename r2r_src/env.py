@@ -24,6 +24,7 @@ import h5py
 import torch
 import torchvision
 from param import args
+import h5py
 
 from utils import load_datasets, load_nav_graphs, Tokenizer
 
@@ -49,13 +50,22 @@ class EnvBatch:
                 self.vfov = 60
                 self.feature_size = next(iter(self.features.values())).shape[-1]
                 print("The feature size is %d" % self.feature_size, flush=True)
+            elif isinstance(feature_store, h5py.File):
+                self.features = feature_store
+                self.image_w = 640
+                self.image_h = 480
+                self.vfov = 60
+                scan = list(self.features.keys())[0]
+                view = list(self.features[scan].keys())[0]
+                self.feature_size = self.features[scan][view].shape[-1]
+                print("The feature size is %d" % self.feature_size, flush=True)
         else:
             print("Image features not provided", flush=True)
             self.features = None
             self.image_w = 640
             self.image_h = 480
             self.vfov = 60
-        self.featurized_scans = set([key.split("_")[0] for key in list(self.features.keys())])
+        self.featurized_scans = set(self.features.keys())
         self.sims = []
         for i in range(batch_size):
             sim = MatterSim.Simulator()
@@ -66,8 +76,11 @@ class EnvBatch:
             sim.initialize()
             self.sims.append(sim)
 
-        self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
-        self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
+        if args.include_objs:
+            self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
+            self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
+            with open(args.OBJECT_CLASS_FILE, "r") as f:
+                self.object_classes = json.load(f)
         self.first_iter_done = False
 
     def _make_id(self, scanId, viewpointId):
@@ -159,7 +172,7 @@ class EnvBatch:
 
             long_id = self._make_id(state.scanId, state.location.viewpointId)
             if self.features:
-                feature = self.features[long_id]  # Get feature for
+                feature = self.features[state.scanId][state.location.viewpointId]  # Get feature for
                 feature_states.append((feature, state))
             else:
                 feature_states.append((None, state))
@@ -382,41 +395,37 @@ class R2RBatch:
             return candidate_new
 
     def make_objs(self, scanId: str, viewpointId: str, agent_head: float, agent_el: float) -> dict:
+        if not args.include_objs:
+            return {}
+
         long_id = "%s_%s" % (scanId, viewpointId)
         if long_id in self.buffered_obj_dict:
             o_new = self.buffered_obj_dict[long_id].copy()
 
             obj_orients_norm = o_new["orients_normalized"]
 
+            original_orients_agent = obj_orients_norm.clone()
+            original_orients_agent[:, 0] -= agent_head
+            original_orients_agent[:, 1] -= agent_el
             o_new["orients"] = torch.Tensor(
-                [utils.angle_feature(head - agent_head, elev - agent_el) for head, elev in obj_orients_norm]
+                [utils.angle_feature(head, elev) for (head, elev) in original_orients_agent]
             )
             o_new.pop("orients_normalized")
             return o_new
 
         roi, orient_tensor, pos_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
 
-        obj_names_ = [self.tok.encode_sentence(obj_name) for obj_name in obj_names]
-
-        banned_words = ["<UNK>", "object", "ceiling", "wall", "floor", "remove"]
-        valid_indices = [
-            i for i, name in enumerate(obj_names_) if not any(self.tok.word_to_index[w] in name for w in banned_words)
-        ]
-        obj_names = [obj_names[i] for i in valid_indices]
-
-        valid_indices = torch.LongTensor(valid_indices)
-        orient_tensor = orient_tensor.index_select(0, valid_indices)
-        pos_tensor = pos_tensor.index_select(0, valid_indices)
-        roi = roi.index_select(0, valid_indices)
-
-        obj_orients_agent = torch.Tensor(
-            [utils.angle_feature(head - agent_head, elev - agent_el) for (head, elev) in orient_tensor]
-        )
+        original_orients_agent = orient_tensor.clone()
+        original_orients_agent[:, 0] -= agent_head
+        original_orients_agent[:, 1] -= agent_el
+        orient_feat = torch.Tensor([utils.angle_feature(head, elev) for (head, elev) in original_orients_agent])
 
         obj_dict = {
             "feats": roi,
             "bboxs": pos_tensor,
             "names": obj_names,
+            "class_ids": torch.LongTensor([self.env.object_classes.index(obj_name) for obj_name in obj_names]),
+            "original_orient": original_orients_agent,
         }
 
         self.buffered_obj_dict[long_id] = {
@@ -424,7 +433,7 @@ class R2RBatch:
             "orients_normalized": orient_tensor,
         }
 
-        obj_dict["orients"] = obj_orients_agent
+        obj_dict["orients"] = orient_feat
 
         return obj_dict
 

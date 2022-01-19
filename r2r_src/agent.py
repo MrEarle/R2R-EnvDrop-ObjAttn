@@ -8,6 +8,7 @@ import math
 import time
 
 import torch
+from torch._C import dtype
 import torch.nn as nn
 from torch.autograd import Variable
 from torch import optim
@@ -129,6 +130,9 @@ class Seq2SeqAgent(BaseAgent):
         # Evaluations
         self.losses = []
         self.criterion = nn.CrossEntropyLoss(ignore_index=args.ignoreid, size_average=False)
+        if args.obj_aux_task:
+            self.obj_supervision_weight = args.obj_aux_task_weight
+            self.obj_supervision = nn.CrossEntropyLoss()
 
         print("Listener: Done Instantiating Loss. Initializing Logs", flush=True)
         # Logs
@@ -160,34 +164,40 @@ class Seq2SeqAgent(BaseAgent):
             list(perm_idx),
         )
 
-    def _parse_objs(self, obs, max_objs=20) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _parse_objs(self, obs, max_objs=args.max_obj_number) -> Tuple[torch.Tensor, torch.Tensor]:
         obj_feat_shape = [2048, 2, 2]
         angle_enc_size = args.angle_feat_size
 
         obj_feats = torch.zeros((len(obs), max_objs, *obj_feat_shape))
         obj_headings = torch.zeros((len(obs), max_objs, angle_enc_size))
+        obj_classes = torch.zeros((len(obs), max_objs), dtype=torch.int32)
         mask = torch.zeros((len(obs), max_objs))
-        sample_indices = np.zeros((len(obs), max_objs))
+        sample_indices = torch.zeros((len(obs), max_objs), dtype=torch.int32)
 
-        for i, ob in enumerate(obs):
-            objs = ob["objects"]
-            obj_tuples = tuple(zip(objs["orients"], objs["feats"]))
-            if len(obj_tuples) == 0:
-                continue
+        if args.include_objs:
+            for i, ob in enumerate(obs):
+                objs = ob["objects"]
 
-            objs_to_sample = min(max_objs, len(obj_tuples))
+                objs_to_sample = min(len(objs["class_ids"]), max_objs)
 
-            for j, sample_index in enumerate(random.sample(range(len(obj_tuples)), objs_to_sample)):
-                (orient, feats) = obj_tuples[sample_index]
-                obj_headings[i, j] = orient
-                obj_feats[i, j] = feats
-                mask[i, j] = 1
-                sample_indices[i, j] = sample_index
+                if objs_to_sample == 0:
+                    continue
+
+                sample_indices[i, :objs_to_sample] = torch.from_numpy(
+                    np.random.choice(len(objs["class_ids"]), objs_to_sample, replace=False)
+                ).int()
+
+                sample = sample_indices[i, :objs_to_sample]
+                obj_headings[i, :objs_to_sample] = torch.index_select(objs["orients"], 0, sample)
+                obj_feats[i, :objs_to_sample] = torch.index_select(objs["feats"], 0, sample)
+                obj_classes[i, :objs_to_sample] = torch.index_select(objs["class_ids"], 0, sample)
+                mask[i, :objs_to_sample] = 1
 
         return (
             obj_headings.float().cuda(),
             obj_feats.float().cuda(),
             mask.int().cuda(),
+            obj_classes.int().cuda(),
             sample_indices,
         )
 
@@ -340,12 +350,6 @@ class Seq2SeqAgent(BaseAgent):
         ctx, h_t, c_t = self.encoder(seq, seq_lengths)
         ctx_mask = seq_mask
 
-        # * ==== Encode object labels ===
-        # obj_heads = [batch, num_objs, angle_feat_size]
-        # obj_idxs = [batch, num_objs, 3]
-        obj_heads, obj_feats, obj_mask, sample_indices = self._parse_objs(perm_obs)
-        # * =============================
-
         # Init the reward shaping
         last_dist = np.zeros(batch_size, np.float32)
         for i, ob in enumerate(perm_obs):  # The init distance from the view point to the target
@@ -378,6 +382,13 @@ class Seq2SeqAgent(BaseAgent):
         for t in range(self.episode_len):
 
             input_a_t, f_t, candidate_feat, angle_feats, candidate_leng = self.get_input_feat(perm_obs)
+
+            # * ==== Encode object labels ===
+            # obj_heads = [batch, num_objs, angle_feat_size]
+            # obj_idxs = [batch, num_objs, 3]
+            obj_heads, obj_feats, obj_mask, obj_classes, sample_indices = self._parse_objs(perm_obs)
+            # * =============================
+
             if speaker is not None:  # Apply the env drop mask to the feat
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
@@ -393,14 +404,16 @@ class Seq2SeqAgent(BaseAgent):
                 "elevation",
                 "candidate",
             ]
-            traj_info = [
-                {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample, "mask": msk}
-                for ob, obj_sample, msk in zip(perm_obs, sample_indices, obj_mask)
-            ]
-            self.decoder.connectionwise_obj_attn.traj_info = traj_info
+
+            if args.logging_vis:
+                traj_info = [
+                    {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample, "mask": msk}
+                    for ob, obj_sample, msk in zip(perm_obs, sample_indices, obj_mask)
+                ]
+                self.decoder.connectionwise_obj_attn.traj_info = traj_info
 
             # ! Aca tengo que pasar los objetos
-            h_t, c_t, logit, h1 = self.decoder(
+            h_t, c_t, logit, h1, obj_scores = self.decoder(
                 input_a_t,
                 f_t,
                 candidate_feat,
@@ -432,6 +445,13 @@ class Seq2SeqAgent(BaseAgent):
             # Supervised training
             target = self._teacher_action(perm_obs, ended)
             ml_loss += self.criterion(logit, target)
+
+            # * ==== Object label loss ===
+            if args.obj_aux_task:
+                obj_scores = obj_scores.view(-1, args.num_obj_classes)
+                obj_target = obj_classes.view(-1).long()
+                obj_loss = self.obj_supervision(obj_scores, obj_target)
+                ml_loss += obj_loss * self.obj_supervision_weight
 
             # Determine next model inputs
             if self.feedback == "teacher":
@@ -502,6 +522,10 @@ class Seq2SeqAgent(BaseAgent):
             if ended.all():
                 break
 
+        if args.obj_aux_task:
+            self.logs["obj_loss"].append(obj_loss.item())
+        self.logs["ml_loss"].append(ml_loss.item())
+
         if train_rl:
             # Last action in A2C
             (
@@ -514,7 +538,7 @@ class Seq2SeqAgent(BaseAgent):
             if speaker is not None:
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
-            last_h_, _, _, _ = self.decoder(
+            last_h_, _, _, _, _ = self.decoder(
                 input_a_t,
                 f_t,
                 candidate_feat,
@@ -713,7 +737,7 @@ class Seq2SeqAgent(BaseAgent):
             input_a_t, f_t, candidate_feat, candidate_leng = self.get_input_feat(obs)
 
             # Run one decoding step
-            h_t, c_t, alpha, logit, h1 = self.decoder(
+            h_t, c_t, alpha, logit, h1, _ = self.decoder(
                 input_a_t, f_t, candidate_feat, h_t, h1, c_t, ctx, ctx_mask, False
             )
 
@@ -998,7 +1022,7 @@ class Seq2SeqAgent(BaseAgent):
             model_keys = set(state.keys())
             load_keys = set(states[name]["state_dict"].keys())
             if model_keys != load_keys:
-                print("NOTICE: DIFFERENT KEYS IN THE LISTEREN", flush=True)
+                print("NOTICE: DIFFERENT KEYS IN THE LISTEREN", model_keys.symmetric_difference(load_keys), flush=True)
             state.update(states[name]["state_dict"])
             model.load_state_dict(state)
             if args.loadOptim:

@@ -159,12 +159,17 @@ class AttnDecoderLSTM(nn.Module):
         self.lstm = nn.LSTMCell(embedding_size + feature_size, hidden_size)
         self.feat_att_layer = SoftDotAttention(hidden_size, feature_size)
         self.attention_layer = SoftDotAttention(hidden_size, hidden_size)
-        self.candidate_att_layer = SoftDotAttention(hidden_size, feature_size + obj_attn_size)
+
+        self.candidate_att_size = feature_size
+        if args.include_objs:
+            self.candidate_att_size += obj_attn_size
+        self.candidate_att_layer = SoftDotAttention(hidden_size, self.candidate_att_size)
 
         # * === Object Attention ===
-        ObjAttnClass = get_object_attention_class()
-        self.connectionwise_obj_attn = ObjAttnClass(obj_attn_size=obj_attn_size)
-        print("ObjAttention: Using class {}".format(type(self.connectionwise_obj_attn).__name__), flush=True)
+        if args.include_objs:
+            ObjAttnClass = get_object_attention_class()
+            self.connectionwise_obj_attn = ObjAttnClass(obj_attn_size=obj_attn_size)
+            print("ObjAttention: Using class {}".format(type(self.connectionwise_obj_attn).__name__), flush=True)
         # * ========================
 
     def forward(
@@ -224,25 +229,28 @@ class AttnDecoderLSTM(nn.Module):
         h_tilde_drop = self.drop(h_tilde)
 
         # * === Object Attention ===
-        # conn_objs: [batch, num_viewpoints, obj_attn_size]
-        # _: [batch, num_viewpoints, num_objs]
-        conn_objs, _ = self.connectionwise_obj_attn(
-            object_headings=obj_heads,  # [batch, num_objs, angle_feat_size]
-            object_feats=obj_feats,  # [batch, num_objs, 2048, 2, 2]
-            viewpoint_heading=angle_feats,  # [batch, num_conn, angle_feat_size]
-            text_context=h_tilde,  # [batch, txt_context_shape]
-            obj_mask=obj_mask,  # [batch, num_objs]
-        )
+        obj_scores = None
+        if args.include_objs:
+            # conn_objs: [batch, num_viewpoints, obj_attn_size]
+            # _: [batch, num_viewpoints, num_objs]
+            conn_objs, _, obj_scores = self.connectionwise_obj_attn(
+                object_headings=obj_heads,  # [batch, num_objs, angle_feat_size]
+                object_feats=obj_feats,  # [batch, num_objs, 2048, 2, 2]
+                viewpoint_heading=angle_feats,  # [batch, num_conn, angle_feat_size]
+                text_context=h_tilde,  # [batch, txt_context_shape]
+                obj_mask=obj_mask,  # [batch, num_objs]
+            )
         # * ========================
 
         # cand_feat: [batch, num_conn, feat_size]
         if not already_dropfeat:
             cand_feat[..., : -args.angle_feat_size] = self.drop_env(cand_feat[..., : -args.angle_feat_size])
 
-        cand_obj_feats = torch.cat((cand_feat, conn_objs), dim=2)
-        _, logit = self.candidate_att_layer(h_tilde_drop, cand_obj_feats, output_prob=False)
+        if args.include_objs:
+            cand_feat = torch.cat((cand_feat, conn_objs), dim=2)
+        _, logit = self.candidate_att_layer(h_tilde_drop, cand_feat, output_prob=False)
 
-        return h_1, c_1, logit, h_tilde
+        return h_1, c_1, logit, h_tilde, obj_scores
 
 
 class Critic(nn.Module):

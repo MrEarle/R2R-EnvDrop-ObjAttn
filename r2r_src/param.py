@@ -1,5 +1,6 @@
 import argparse
 import os
+import json
 import torch
 
 
@@ -124,7 +125,16 @@ class Param:
             help="batch or total",
         )
 
-        self.args = self.parser.parse_args()
+        # Obj Args
+
+        self.parser.add_argument("--obj_attn_type", type=str, default="connection")
+        self.parser.add_argument("--max_obj_number", type=int, default=20)
+        self.parser.add_argument("--obj_aux_task", action="store_true")
+        self.parser.add_argument("--obj_aux_task_weight", type=float, default=0.1)
+        self.parser.add_argument("--dataset", type=str, default="R2R")
+        self.parser.add_argument("--include_objs", action="store_true")
+
+        self.args, _ = self.parser.parse_known_args()
 
         if self.args.optim == "rms":
             print("Optimizer: Using RMSProp", flush=True)
@@ -139,22 +149,40 @@ class Param:
             assert False
 
 
-# param = Param()
-# args = param.args
-# args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
-# args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
+param = Param()
+args = param.args
+args.TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
+args.TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
 
-# args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
-# args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
-# args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
-# args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
-# args.obj_attn_type = "no_connection"
+args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
+args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
+
+# * ============= My Args ==============
+args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
+args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
+args.OBJECT_CLASS_FILE = "/home/mrearle/storage/img_features/object_classes.json"
+
+with open(args.OBJECT_CLASS_FILE, "r") as f:
+    objs = json.load(f)
+    args.num_obj_classes = len(objs)
+args.views = 36
+args.logging_vis = False
+
+# args.obj_attn_type = "connection"
+# args.max_obj_number = 20
+# args.obj_aux_task = False
+# args.obj_aux_task_weight = 0.1
 # args.dataset = "R2R"
-# args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
-# args.log_dir = "snap/%s" % args.name
 
-# if not os.path.exists(args.log_dir):
-#     os.makedirs(args.log_dir)
-# DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+if args.obj_aux_task:
+    args.name += f"-aux({args.obj_aux_task_weight})"
+# * ====================================
 
-# print(f"\n\n\tTraining model {args.name}\n\n", flush=True)
+args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
+args.log_dir = "snap/%s" % args.name
+
+if not os.path.exists(args.log_dir):
+    os.makedirs(args.log_dir)
+DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+
+print(f"\n\n\tTraining model {args.name}\n\n", flush=True)

@@ -14,4 +14,4 @@ source /home/mrearle/venvs/r2r/bin/activate
 
 export HDF5_USE_FILE_LOCKING="FALSE"
 echo "Starting agent training"
-bash /home/mrearle/repos/R2R-EnvDrop-ObjAttn/run/agent.bash 0
+bash /home/mrearle/repos/R2R-EnvDrop-ObjAttn/run/agent_aux.bash 0

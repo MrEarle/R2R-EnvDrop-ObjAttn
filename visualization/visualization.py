@@ -410,6 +410,110 @@ def plot_matterport_objs_with_traj(info, trajectory, instruction, viewpoint_attn
     return viewpoint_mapping
 
 
+def plot_matterport_sample_objs_with_traj(
+    info,
+    trajectory,
+    instruction,
+    viewpoint_attn,
+    viewpoint_indices,
+    obj_names,
+    obj_pos,
+    sample,
+    obj_attn,
+):
+    scan = info["scan"]
+    viewpoint = info["viewpoint"]
+    viewpoint_heading = info["heading"]
+
+    _, reachable_viewpoints = get_objects(scan, viewpoint)
+
+    images = []
+    for viewpoint_elevation in (np.pi / 2 * x for x in range(-1, 2)):
+        im = visualize_panorama_img(scan, viewpoint, viewpoint_heading, viewpoint_elevation)
+        images.append(im)
+
+    img = np.concatenate(images[::-1])
+
+    plt.figure(figsize=(18, 9))
+    plt.imshow(img)
+    plt.xticks(np.linspace(0, img.shape[1] - 1, 5), [-180, -90, 0, 90, 180])
+    plt.xlabel(f"relative heading from the agent")
+    plt.yticks(np.linspace(0, img.shape[0] - 1, 5), [-180, -90, 0, 90, 180])
+
+    bbox_style = dict(boxstyle="round", fc="w", ec="0.5", alpha=0.1)
+
+    x0, y0 = info["heading"], info["elevation"]
+    obj_attn = torch.sum(obj_attn, dim=0) / obj_attn.shape[0]
+    obj_attn = obj_attn / torch.max(obj_attn)
+    # print(obj_attn)
+    for i, (category, orient) in enumerate(zip(obj_names, obj_pos)):
+        (heading, elevation) = float(orient[0]), float(orient[1])
+        heading -= x0
+        while heading > np.pi:
+            heading -= 2 * np.pi
+        while heading < -np.pi:
+            heading += 2 * np.pi
+
+        elevation += y0
+        while elevation > np.pi:
+            heading -= 2 * np.pi
+        while elevation < -np.pi:
+            elevation += 2 * np.pi
+
+        if i in sample:
+            # print(i, category, heading, elevation, obj_attn[sample.index(i)])
+            color = cm.viridis(obj_attn[sample.index(i)].numpy())
+        else:
+            color = "black"
+
+        first_coord = (heading / (2 * np.pi) + 0.5) * img.shape[1]
+        second_coord = (0.5 - elevation / (np.pi / 1.1)) * img.shape[0]
+
+        plt.annotate(category, (first_coord + 15, second_coord + 15), bbox=bbox_style, color="black")
+        plt.plot(first_coord, second_coord, color=color, marker="v", linewidth=3)
+
+    viewpoint_mapping = {"STOP": "STOP"}
+    for i, reachable_viewpoint in enumerate(reachable_viewpoints.itertuples()):
+        heading, elevation = float(reachable_viewpoint.heading), float(reachable_viewpoint.elevation)
+
+        heading -= x0
+        while heading > np.pi:
+            heading -= 2 * np.pi
+        while heading < -np.pi:
+            heading += 2 * np.pi
+
+        elevation += y0
+        while elevation > np.pi:
+            heading -= 2 * np.pi
+        while elevation < -np.pi:
+            elevation += 2 * np.pi
+
+        first_coord = (heading / (2 * np.pi) + 0.5) * img.shape[1]
+        second_coord = (0.5 - elevation / (np.pi / 1.1)) * img.shape[0]
+
+        attn_index = viewpoint_indices.index(reachable_viewpoint.name)
+        attn_val = float(torch.softmax(viewpoint_attn, dim=-1)[attn_index])
+        color = cm.viridis(attn_val)
+
+        plt.plot(
+            first_coord,
+            second_coord,
+            color=color,
+            marker="o",
+            markersize=50 / reachable_viewpoint.distance,
+            linewidth=1,
+        )
+        plt.annotate(i, (first_coord, second_coord), bbox=bbox_style, color="black")
+        print(i, reachable_viewpoint.name, reachable_viewpoint.name in trajectory)
+
+        viewpoint_mapping[reachable_viewpoint.name] = i
+
+    print(instruction)
+
+    plt.show()
+    return viewpoint_mapping
+
+
 def plot_attention(x_labels=None, y_labels=None, attn=None, map_attention=None):
     fig, ax = plt.subplots(1, 1, figsize=(10, 20))
     # im = ax.imshow(attn.transpose(1, 0).numpy())

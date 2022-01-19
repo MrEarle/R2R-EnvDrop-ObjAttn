@@ -21,6 +21,7 @@ from env import R2RBatch
 from agent import Seq2SeqAgent
 from eval import Evaluation
 from param import args
+import h5py
 
 import sys
 
@@ -46,10 +47,11 @@ TRAIN_VOCAB = "tasks/R2R/data/train_vocab.txt"
 TRAINVAL_VOCAB = "tasks/R2R/data/trainval_vocab.txt"
 
 IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
+H5_IMAGENET_FEATS = "/home/mrearle/storage/img_features/ResNet-152-imagenet.hdf5"
 PLACE365_FEATURES = "img_features/ResNet-152-places365.tsv"
 
 if args.features == "imagenet":
-    features = IMAGENET_FEATURES
+    features = H5_IMAGENET_FEATS
 
 if args.fast_train:
     name, ext = os.path.splitext(features)
@@ -136,7 +138,7 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
             )
 
 
-def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
+def train(train_env, tok, n_iters, log_every=50, val_envs={}, aug_env=None):
     writer = SummaryWriter(logdir=log_dir)
     listner = Seq2SeqAgent(train_env, "", tok, args.maxAction)
 
@@ -200,6 +202,10 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
         total = max(sum(listner.logs["total"]), 1)
         length = max(len(listner.logs["critic_loss"]), 1)
         critic_loss = sum(listner.logs["critic_loss"]) / total  # / length / args.batchSize
+        if args.obj_aux_task:
+            obj_loss = sum(listner.logs["obj_loss"]) / total  # / length / args.batchSize
+            writer.add_scalar("loss/object", obj_loss, idx)
+        ml_loss = sum(listner.logs["ml_loss"]) / total  # / length / args.batchSize
         entropy = sum(listner.logs["entropy"]) / total  # / length / args.batchSize
         predict_loss = sum(listner.logs["us_loss"]) / max(len(listner.logs["us_loss"]), 1)
         writer.add_scalar("loss/critic", critic_loss, idx)
@@ -207,6 +213,7 @@ def train(train_env, tok, n_iters, log_every=100, val_envs={}, aug_env=None):
         writer.add_scalar("loss/unsupervised", predict_loss, idx)
         writer.add_scalar("total_actions", total, idx)
         writer.add_scalar("max_length", length, idx)
+        writer.add_scalar("loss/supervised", ml_loss, idx)
         print("total_actions", total, flush=True)
         print("max_length", length, flush=True)
 
@@ -427,11 +434,11 @@ def train_val():
     vocab = read_vocab(TRAIN_VOCAB)
     tok = Tokenizer(vocab=vocab, encoding_length=args.maxInput)
 
-    feat_dict = read_img_features(features)
+    feat_h5 = h5py.File(features, "r")
 
-    featurized_scans = set([key.split("_")[0] for key in list(feat_dict.keys())])
+    featurized_scans = set(feat_h5.keys())
 
-    train_env = R2RBatch(feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
+    train_env = R2RBatch(feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
     from collections import OrderedDict
 
     val_env_names = ["val_unseen", "val_seen"]
@@ -450,7 +457,7 @@ def train_val():
                 split,
                 (
                     R2RBatch(
-                        feat_dict,
+                        feat_h5,
                         batch_size=args.batchSize,
                         splits=[split],
                         tokenizer=tok,
@@ -514,16 +521,17 @@ def train_val_augment():
     tok = Tokenizer(vocab=vocab, encoding_length=args.maxInput)
 
     # Load the env img features
-    feat_dict = read_img_features(features)
-    featurized_scans = set([key.split("_")[0] for key in list(feat_dict.keys())])
+    feat_h5 = h5py.File(features, "r")
+
+    featurized_scans = set(feat_h5.keys())
 
     # Load the augmentation data
     aug_path = args.aug
 
     # Create the training environment
-    train_env = R2RBatch(feat_dict, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
+    train_env = R2RBatch(feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
     aug_env = R2RBatch(
-        feat_dict,
+        feat_h5,
         batch_size=args.batchSize,
         splits=[aug_path],
         tokenizer=tok,
@@ -555,7 +563,7 @@ def train_val_augment():
     # Setup the validation data
     val_envs = {
         split: (
-            R2RBatch(feat_dict, batch_size=args.batchSize, splits=[split], tokenizer=tok),
+            R2RBatch(feat_h5, batch_size=args.batchSize, splits=[split], tokenizer=tok),
             Evaluation([split], featurized_scans, tok),
         )
         for split in ["train", "val_seen", "val_unseen"]

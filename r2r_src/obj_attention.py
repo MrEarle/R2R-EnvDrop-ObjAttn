@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -63,7 +63,7 @@ class ObjectAttention(nn.Module):
     def __init__(
         self,
         object_attention_size: int = 256,
-        num_objects=20,  # TODO: Hyperparam
+        num_objects=args.max_obj_number,
     ) -> None:
         super().__init__()
 
@@ -175,8 +175,59 @@ class BaseObjAttn(nn.Module):
         self._obj_attention = ObjectAttention(object_attention_size=obj_attn_size)
         self.traj_info = None
 
+        if args.obj_aux_task:
+            self.obj_aux_linear = nn.Sequential(
+                nn.LazyLinear(obj_attn_size),
+                nn.LazyLinear(args.num_obj_classes),
+            )
+
     @abstractmethod
     def forward(
+        self,
+        object_headings: Tensor,
+        object_feats: Tensor,
+        viewpoint_heading: Tensor,
+        text_context: Tensor,
+        obj_mask: Tensor = None,
+    ) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
+        """
+        Parameters:
+            object_headings:
+                shape: [batch, num_objs, direction_feats]
+            object_feats:
+                shape:  [batch, num_objs, 2048, 2, 2]
+            viewpoint_heading:
+                shape: [batch, num_viewpoints, viewpoint_heading_feat]
+            text_context:
+                shape: [batch, txt_context_shape]
+            obj_mask:
+                shape: [batch, num_objs]
+        """
+
+        # Flatten to use num_objs as batch. [batch * num_objs, 2048, 2, 2]
+        o_shape = object_feats.shape
+        object_feats = object_feats.view((-1, *o_shape[2:]))
+
+        # Reduce object features to [batch * num_objs, obj_attn_size, 2, 2]
+        reduced_feats = self.obj_feat_reducer(object_feats)
+        # TODO: Quizas agregar una capa de embedding a la posicion del objeto? Tipo LXMERT
+
+        # Restore batch and num_objs, and flatten. [batch, num_objs, obj_attn_size * 4 (1024)]
+        reduced_feats = reduced_feats.view((o_shape[0], o_shape[1], -1))
+
+        attended_objects, attn_weights = self.forward_objects(
+            object_headings, reduced_feats, viewpoint_heading, text_context, obj_mask
+        )
+
+        obj_aux_scores = None
+        if args.obj_aux_task:
+            # [batch, num_objs, num_obj_classes]
+            obj_aux_scores = self.obj_aux_linear(reduced_feats)
+
+        return attended_objects, attn_weights, obj_aux_scores
+
+    @abstractmethod
+    def forward_objects(
         self,
         object_headings: Tensor,
         object_feats: Tensor,
@@ -192,7 +243,7 @@ class ConnectionwiseObjectAttention(BaseObjAttn):
         super().__init__(obj_attn_size)
         self._obj_viewpoint_similarity = ObjectHeadingViewpointSimilarity()
 
-    def forward(
+    def forward_objects(
         self,
         object_headings: Tensor,
         object_feats: Tensor,
@@ -214,20 +265,10 @@ class ConnectionwiseObjectAttention(BaseObjAttn):
                 shape: [batch, num_objs]
         """
 
-        # Flatten to use num_objs as batch. [batch * num_objs, 2048, 2, 2]
-        o_shape = object_feats.shape
-        object_feats = object_feats.view((-1, *o_shape[2:]))
-
-        # Reduce object features to [batch * num_objs, obj_attn_size, 2, 2]
-        reduced_feats = self.obj_feat_reducer(object_feats)
-
-        # Restore batch and num_objs, and flatten. [batch, num_objs, obj_attn_size * 4 (1024)]
-        reduced_feats = reduced_feats.view((o_shape[0], o_shape[1], -1))
-
         # Get object weighed by heading similarity with viewpoints
         # Shape: [batch, num_viewpoints, num_objs, obj_feat_size]
         viewpoint_objs = self._obj_viewpoint_similarity(
-            obj_feats=reduced_feats,
+            obj_feats=object_feats,
             object_headings=object_headings,
             viewpoint_headings=viewpoint_heading,
         )
@@ -258,7 +299,7 @@ class ConnectionwiseObjectAttention(BaseObjAttn):
 
 
 class NoConnectionObjectAttention(BaseObjAttn):
-    def forward(
+    def forward_objects(
         self,
         object_headings: Tensor,
         object_feats: Tensor,
@@ -280,18 +321,8 @@ class NoConnectionObjectAttention(BaseObjAttn):
                 shape: [batch, num_objs]
         """
 
-        # Flatten to use num_objs as batch. [batch * num_objs, 2048, 2, 2]
-        o_shape = object_feats.shape
-        object_feats = object_feats.view((-1, *o_shape[2:]))
-
-        # Reduce object features to [batch * num_objs, obj_attn_size, 2, 2]
-        reduced_feats = self.obj_feat_reducer(object_feats)
-
-        # Restore batch and num_objs, and flatten. [batch, num_objs, obj_attn_size * 4 (1024)]
-        reduced_feats = reduced_feats.view((o_shape[0], o_shape[1], -1))
-
         # [batch, num_objs, obj_feat_size + angle_feat_size]
-        objs = torch.cat((reduced_feats, object_headings), dim=-1)
+        objs = torch.cat((object_feats, object_headings), dim=-1)
 
         # [batch, 1, self.obj_attn_size], [batch, 1, num_objs]
         attended_objects, attn_weights = self._obj_attention(objs, text_context, obj_mask=obj_mask)
