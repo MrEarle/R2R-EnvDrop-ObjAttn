@@ -3,6 +3,67 @@ import os
 import json
 import torch
 
+SMALL_SPLITS = {
+    "train": [
+        "Uxmj2M2itWa",
+        "82sE5b5pLXE",
+        "2n8kARJN3HM",
+        "1pXnuDYAj8r",
+        "VLzqgDo317F",
+        "p5wJjkQkbXX",
+        "r1Q1Z4BcV1o",
+        "HxpKQynjfin",
+        "PuKPg4mmafe",
+        "cV4RVeZvu5T",
+        "PX4nDJXEHrG",
+        "VFuaQ6m2Qom",
+        "JF19kD82Mey",
+        "sT4fr6TAbpF",
+        "E9uDoFAP3SH",
+        "XcA2TqTSSAj",
+        "8WUmhLawc2A",
+        "EDJbREhghzL",
+        "1LXtFkjw3qL",
+        "pRbA3pwrgk9",
+        "gZ6f7yhEvPG",
+    ],
+    "val_seen": [
+        "Uxmj2M2itWa",
+        "82sE5b5pLXE",
+        "2n8kARJN3HM",
+        "1pXnuDYAj8r",
+        "VLzqgDo317F",
+        "p5wJjkQkbXX",
+        "r1Q1Z4BcV1o",
+        "PuKPg4mmafe",
+        "cV4RVeZvu5T",
+        "PX4nDJXEHrG",
+        "VFuaQ6m2Qom",
+        "JF19kD82Mey",
+        "sT4fr6TAbpF",
+        "E9uDoFAP3SH",
+        "XcA2TqTSSAj",
+        "8WUmhLawc2A",
+        "1LXtFkjw3qL",
+        "EDJbREhghzL",
+        "pRbA3pwrgk9",
+        "gZ6f7yhEvPG",
+    ],
+    "val_unseen": [
+        "2azQ1b91cZZ",
+        "QUCTc6BB5sX",
+        "zsNo4HB9uLZ",
+        "oLBMNvg9in8",
+        "8194nk5LbLH",
+        "EU6Fwq7SyZv",
+        "x8F5xyUWy9e",
+        "Z6MFQCViBuw",
+        "X7HyMhZNoso",
+        "pLe4wQe7qrG",
+        "TbHJrupSAjP",
+    ],
+}
+
 
 class Param:
     def __init__(self):
@@ -133,6 +194,7 @@ class Param:
         self.parser.add_argument("--obj_aux_task_weight", type=float, default=0.1)
         self.parser.add_argument("--dataset", type=str, default="R2R")
         self.parser.add_argument("--include_objs", action="store_true")
+        self.parser.add_argument("--reduced_envs", action="store_true")
 
         self.args, _ = self.parser.parse_known_args()
 
@@ -158,8 +220,9 @@ args.IMAGENET_FEATURES = "img_features/ResNet-152-imagenet.tsv"
 args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
 
 # * ============= My Args ==============
-args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
-args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
+# args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
+# args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
+args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/object_features.h5"
 args.OBJECT_CLASS_FILE = "/home/mrearle/storage/img_features/object_classes.json"
 
 with open(args.OBJECT_CLASS_FILE, "r") as f:
@@ -167,6 +230,10 @@ with open(args.OBJECT_CLASS_FILE, "r") as f:
     args.num_obj_classes = len(objs)
 args.views = 36
 args.logging_vis = False
+args.reduced_env_ids = set()
+
+for env_ids in SMALL_SPLITS.values():
+    args.reduced_env_ids.update(env_ids)
 
 # args.obj_attn_type = "connection"
 # args.max_obj_number = 20
@@ -176,6 +243,8 @@ args.logging_vis = False
 
 if args.obj_aux_task:
     args.name += f"-aux({args.obj_aux_task_weight})"
+if args.reduced_envs:
+    args.name += f"-reduced"
 # * ====================================
 
 args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
@@ -184,5 +253,7 @@ args.log_dir = "snap/%s" % args.name
 if not os.path.exists(args.log_dir):
     os.makedirs(args.log_dir)
 DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {args.device}", flush=True)
 
 print(f"\n\n\tTraining model {args.name}\n\n", flush=True)

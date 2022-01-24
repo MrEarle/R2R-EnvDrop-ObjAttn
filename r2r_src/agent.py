@@ -168,11 +168,11 @@ class Seq2SeqAgent(BaseAgent):
         obj_feat_shape = [2048, 2, 2]
         angle_enc_size = args.angle_feat_size
 
-        obj_feats = torch.zeros((len(obs), max_objs, *obj_feat_shape))
-        obj_headings = torch.zeros((len(obs), max_objs, angle_enc_size))
-        obj_classes = torch.zeros((len(obs), max_objs), dtype=torch.int32)
-        mask = torch.zeros((len(obs), max_objs))
-        sample_indices = torch.zeros((len(obs), max_objs), dtype=torch.int32)
+        obj_feats = torch.zeros((len(obs), max_objs, *obj_feat_shape), dtype=torch.float32, device=args.device)
+        obj_headings = torch.zeros((len(obs), max_objs, angle_enc_size), dtype=torch.float32, device=args.device)
+        obj_classes = torch.zeros((len(obs), max_objs), dtype=torch.int32, device=args.device)
+        mask = torch.zeros((len(obs), max_objs), dtype=torch.int32, device=args.device)
+        sample_indices = torch.zeros((len(obs), max_objs), dtype=torch.int32, device=args.device)
 
         if args.include_objs:
             for i, ob in enumerate(obs):
@@ -184,22 +184,20 @@ class Seq2SeqAgent(BaseAgent):
                     continue
 
                 sample_indices[i, :objs_to_sample] = torch.from_numpy(
-                    np.random.choice(len(objs["class_ids"]), objs_to_sample, replace=False)
-                ).int()
+                    np.random.choice(
+                        np.arange(len(objs["class_ids"]), dtype=np.int32),
+                        objs_to_sample,
+                        replace=False,
+                    ),
+                ).cuda()
 
                 sample = sample_indices[i, :objs_to_sample]
-                obj_headings[i, :objs_to_sample] = torch.index_select(objs["orients"], 0, sample)
-                obj_feats[i, :objs_to_sample] = torch.index_select(objs["feats"], 0, sample)
-                obj_classes[i, :objs_to_sample] = torch.index_select(objs["class_ids"], 0, sample)
+                obj_headings[i, :objs_to_sample] = torch.index_select(objs["orients"].cuda(), 0, sample)
+                obj_feats[i, :objs_to_sample] = torch.index_select(objs["feats"].cuda(), 0, sample)
+                obj_classes[i, :objs_to_sample] = torch.index_select(objs["class_ids"].cuda(), 0, sample)
                 mask[i, :objs_to_sample] = 1
 
-        return (
-            obj_headings.float().cuda(),
-            obj_feats.float().cuda(),
-            mask.int().cuda(),
-            obj_classes.int().cuda(),
-            sample_indices,
-        )
+        return obj_headings, obj_feats, mask, obj_classes, sample_indices
 
     def _feature_variable(self, obs):
         """Extract precomputed features into variable."""

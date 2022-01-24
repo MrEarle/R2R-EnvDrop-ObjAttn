@@ -31,10 +31,7 @@ class Evaluation(object):
                     continue
                 self.gt[str(item["path_id"])] = item
                 self.scans.append(item["scan"])
-                self.instr_ids += [
-                    "%s_%d" % (item["path_id"], i)
-                    for i in range(len(item["instructions"]))
-                ]
+                self.instr_ids += ["%s_%d" % (item["path_id"], i) for i in range(len(item["instructions"]))]
         self.scans = set(self.scans)
         self.instr_ids = set(self.instr_ids)
         self.graphs = load_nav_graphs(self.scans)
@@ -58,18 +55,12 @@ class Evaluation(object):
         The path contains [view_id, angle, vofv]"""
         gt = self.gt[instr_id.split("_")[-2]]
         start = gt["path"][0]
-        assert (
-            start == path[0][0]
-        ), "Result trajectories should include the start position"
+        assert start == path[0][0], "Result trajectories should include the start position"
         goal = gt["path"][-1]
         final_position = path[-1][0]  # the first of [view_id, angle, vofv]
         nearest_position = self._get_nearest(gt["scan"], goal, path)
-        self.scores["nav_errors"].append(
-            self.distances[gt["scan"]][final_position][goal]
-        )
-        self.scores["oracle_errors"].append(
-            self.distances[gt["scan"]][nearest_position][goal]
-        )
+        self.scores["nav_errors"].append(self.distances[gt["scan"]][final_position][goal])
+        self.scores["oracle_errors"].append(self.distances[gt["scan"]][nearest_position][goal])
         self.scores["trajectory_steps"].append(len(path) - 1)
         distance = 0  # Work out the length of the path in meters
         prev = path[0]
@@ -93,12 +84,8 @@ class Evaluation(object):
             if item["instr_id"] in instr_ids:
                 instr_ids.remove(item["instr_id"])
                 self._score_item(item["instr_id"], item["trajectory"])
-        if (
-            "train" not in self.splits
-        ):  # Exclude the training from this. (Because training eval may be partial)
-            assert (
-                len(instr_ids) == 0
-            ), "Missing %d of %d instruction ids from %s - not in %s" % (
+        if "train" not in self.splits:  # Exclude the training from this. (Because training eval may be partial)
+            assert len(instr_ids) == 0, "Missing %d of %d instruction ids from %s - not in %s" % (
                 len(instr_ids),
                 len(self.instr_ids),
                 ",".join(self.splits),
@@ -111,18 +98,10 @@ class Evaluation(object):
             "steps": np.average(self.scores["trajectory_steps"]),
             "lengths": np.average(self.scores["trajectory_lengths"]),
         }
-        num_successes = len(
-            [i for i in self.scores["nav_errors"] if i < self.error_margin]
-        )
-        score_summary["success_rate"] = float(num_successes) / float(
-            len(self.scores["nav_errors"])
-        )
-        oracle_successes = len(
-            [i for i in self.scores["oracle_errors"] if i < self.error_margin]
-        )
-        score_summary["oracle_rate"] = float(oracle_successes) / float(
-            len(self.scores["oracle_errors"])
-        )
+        num_successes = len([i for i in self.scores["nav_errors"] if i < self.error_margin])
+        score_summary["success_rate"] = float(num_successes) / float(len(self.scores["nav_errors"]))
+        oracle_successes = len([i for i in self.scores["oracle_errors"] if i < self.error_margin])
+        score_summary["oracle_rate"] = float(oracle_successes) / float(len(self.scores["oracle_errors"]))
 
         spl = [
             float(error < self.error_margin) * l / max(l, p, 0.01)
@@ -144,12 +123,7 @@ class Evaluation(object):
             path_id = str(path_id)
             assert path_id in self.gt
             # There are three references
-            refs.append(
-                [
-                    self.tok.split_sentence(sent)
-                    for sent in self.gt[path_id]["instructions"]
-                ]
-            )
+            refs.append([self.tok.split_sentence(sent) for sent in self.gt[path_id]["instructions"]])
             candidates.append([self.tok.index_to_word[word_id] for word_id in inst])
 
         tuple = compute_bleu(refs, candidates, smooth=False)

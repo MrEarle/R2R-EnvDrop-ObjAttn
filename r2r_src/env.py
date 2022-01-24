@@ -65,7 +65,11 @@ class EnvBatch:
             self.image_w = 640
             self.image_h = 480
             self.vfov = 60
-        self.featurized_scans = set(self.features.keys())
+
+        if args.reduced_envs:
+            self.featurized_scans = args.reduced_env_ids
+        else:
+            self.featurized_scans = set(self.features.keys())
         self.sims = []
         for i in range(batch_size):
             sim = MatterSim.Simulator()
@@ -78,7 +82,7 @@ class EnvBatch:
 
         if args.include_objs:
             self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
-            self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
+            # self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
             with open(args.OBJECT_CLASS_FILE, "r") as f:
                 self.object_classes = json.load(f)
         self.first_iter_done = False
@@ -101,63 +105,77 @@ class EnvBatch:
         :param viewpointId:
         :return: Tensor with the features of each object in the viewpoint
         """
-        WIDTH = 640
-        HEIGHT = 480
 
-        feat = self.object_feat_store[scanId][viewpointId]
-        feat = torch.from_numpy(np.array(feat))
+        feat_store = self.object_feat_store[f"{scanId}/{viewpointId}"]
+        # if not self.first_iter_done:
+        #     self.first_iter_done = True
+        #     print(feat_store.keys(), flush=True)
 
-        pos_tensor = []
-        orient_tensor = []
-        obj_names = []
+        roi = feat_store["features"][()]
+        orients = feat_store["orientations"][()]
+        bboxs = feat_store["bboxs"][()]
+        names = feat_store["names"][()]
 
-        object_ds = self.object_info_store[scanId][viewpointId]
+        return (
+            torch.from_numpy(roi),
+            torch.from_numpy(orients),
+            torch.from_numpy(bboxs),
+            [name.decode("utf-8") for name in names],
+        )
 
-        for ix in range(36):
-            for (heading, elevation), bin_name in zip(object_ds["orientations"], object_ds["names"]):
-                heading, elevation = float(heading), float(elevation)
-                category = bin_name.decode("utf-8")
+        # WIDTH = 640
+        # HEIGHT = 480
+        # pos_tensor = []
+        # orient_tensor = []
+        # obj_names = []
 
-                x, y = get_obj_coords(ix, elevation, heading, WIDTH=WIDTH, HEIGHT=HEIGHT)
+        # object_ds = self.object_info_store[scanId][viewpointId]
 
-                if x is None or y is None:
-                    continue
+        # for ix in range(36):
+        #     for (heading, elevation), bin_name in zip(object_ds["orientations"], object_ds["names"]):
+        #         heading, elevation = float(heading), float(elevation)
+        #         category = bin_name.decode("utf-8")
 
-                x_roi, y_roi = x // 32, y // 32
+        #         x, y = get_obj_coords(ix, elevation, heading, WIDTH=WIDTH, HEIGHT=HEIGHT)
 
-                pos_tensor.append([ix, x_roi, y_roi])
-                obj_names.append(category)
+        #         if x is None or y is None:
+        #             continue
 
-                orient_tensor.append([heading, elevation])
-        orient_tensor = torch.from_numpy(np.array(orient_tensor))
+        #         x_roi, y_roi = x // 32, y // 32
 
-        roi = []
-        valid_indices = []
-        for i, (view, x1, y1) in enumerate(pos_tensor):
-            x2 = x1 + 1
-            y2 = y1 + 1
-            if x2 >= WIDTH // 32 or y2 >= HEIGHT // 32:
-                continue
-            valid_indices.append(i)
-            roi.append(feat[view, :, y1 : y2 + 1, x1 : x2 + 1])
+        #         pos_tensor.append([ix, x_roi, y_roi])
+        #         obj_names.append(category)
 
-        if len(roi) == 0:
-            return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
+        #         orient_tensor.append([heading, elevation])
+        # orient_tensor = torch.from_numpy(np.array(orient_tensor))
 
-        if not self.first_iter_done:
-            self.first_iter_done = True
-            print(
-                f"First object processinig done. Num objects processed for viewpoint id {viewpointId}: {len(roi)}",
-                flush=True,
-            )
+        # roi = []
+        # valid_indices = []
+        # for i, (view, x1, y1) in enumerate(pos_tensor):
+        #     x2 = x1 + 1
+        #     y2 = y1 + 1
+        #     if x2 >= WIDTH // 32 or y2 >= HEIGHT // 32:
+        #         continue
+        #     valid_indices.append(i)
+        #     roi.append(feat[view, :, y1 : y2 + 1, x1 : x2 + 1])
 
-        obj_names = [obj_names[i] for i in valid_indices]
-        valid_indices = torch.LongTensor(valid_indices)
-        roi = torch.stack(roi, dim=0)
-        pos_tensor = torch.Tensor(pos_tensor).index_select(0, valid_indices)
-        orient_tensor = orient_tensor.index_select(0, valid_indices)
+        # if len(roi) == 0:
+        #     return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
 
-        return roi, orient_tensor, pos_tensor, obj_names
+        # if not self.first_iter_done:
+        #     self.first_iter_done = True
+        #     print(
+        #         f"First object processinig done. Num objects processed for viewpoint id {viewpointId}: {len(roi)}",
+        #         flush=True,
+        #     )
+
+        # obj_names = [obj_names[i] for i in valid_indices]
+        # valid_indices = torch.LongTensor(valid_indices)
+        # roi = torch.stack(roi, dim=0)
+        # pos_tensor = torch.Tensor(pos_tensor).index_select(0, valid_indices)
+        # orient_tensor = orient_tensor.index_select(0, valid_indices)
+
+        # return roi, orient_tensor, pos_tensor, obj_names
 
     def getStates(self):
         """

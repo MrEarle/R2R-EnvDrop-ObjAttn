@@ -11,3 +11,5 @@ metadata_parser
 build
 .venv/
 **logs/
+*.profile
+profile.ipynb

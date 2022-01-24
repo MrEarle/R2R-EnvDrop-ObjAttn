@@ -45,15 +45,15 @@ class EncoderLSTM(nn.Module):
         """Initialize to zero cell states and hidden states."""
         batch_size = inputs.size(0)
         h0 = Variable(
-            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size),
+            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size, device=args.device),
             requires_grad=False,
         )
         c0 = Variable(
-            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size),
+            torch.zeros(self.num_layers * self.num_directions, batch_size, self.hidden_size, device=args.device),
             requires_grad=False,
         )
 
-        return h0.cuda(), c0.cuda()
+        return h0, c0
 
     def forward(self, inputs, lengths):
         """Expects input vocab indices as (batch, seq_len). Also requires a

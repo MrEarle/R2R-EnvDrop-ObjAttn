@@ -45,9 +45,7 @@ class Speaker:
         self.decoder_optimizer = args.optimizer(self.decoder.parameters(), lr=args.lr)
 
         # Evaluation
-        self.softmax_loss = torch.nn.CrossEntropyLoss(
-            ignore_index=self.tok.word_to_index["<PAD>"]
-        )
+        self.softmax_loss = torch.nn.CrossEntropyLoss(ignore_index=self.tok.word_to_index["<PAD>"])
 
         # Will be used in beam search
         self.nonreduced_softmax_loss = torch.nn.CrossEntropyLoss(
@@ -76,9 +74,7 @@ class Speaker:
         self.env.reset_epoch(shuffle=True)
         path2inst = {}
         total = self.env.size()
-        for _ in wrapper(
-            range(total // self.env.batch_size + 1)
-        ):  # Guarantee that all the data are processed
+        for _ in wrapper(range(total // self.env.batch_size + 1)):  # Guarantee that all the data are processed
             obs = self.env.reset()
             insts = self.infer_batch()  # Get the insts of the result
             path_ids = [ob["path_id"] for ob in obs]  # Gather the path ids
@@ -100,9 +96,7 @@ class Speaker:
 
         # Calculate the teacher-forcing metrics
         self.env.reset_epoch(shuffle=True)
-        N = (
-            1 if args.fast_train else 3
-        )  # Set the iter to 1 if the fast_train (o.w. the problem occurs)
+        N = 1 if args.fast_train else 3  # Set the iter to 1 if the fast_train (o.w. the problem occurs)
         metrics = np.zeros(3)
         for i in range(N):
             self.env.reset()
@@ -116,14 +110,10 @@ class Speaker:
             if type(name) is int:  # Go to the next view
                 self.env.env.sims[idx].makeAction([name], [0], [0])
             else:  # Adjust
-                self.env.env.sims[idx].makeAction(
-                    *([x] for x in self.env_actions[name])
-                )
+                self.env.env.sims[idx].makeAction(*([x] for x in self.env_actions[name]))
             state = self.env.env.sims[idx].getState()[0]
             if traj is not None:
-                traj[i]["path"].append(
-                    (state.location.viewpointId, state.heading, state.elevation)
-                )
+                traj[i]["path"].append((state.location.viewpointId, state.heading, state.elevation))
 
         if perm_idx is None:
             perm_idx = range(len(perm_obs))
@@ -143,18 +133,13 @@ class Speaker:
                     take_action(i, idx, "down")
                     src_level -= 1
                     # print("DOWN", flush=True)
-                while (
-                    self.env.env.sims[idx].getState()[0].viewIndex != trg_point
-                ):  # Turn right until the target
+                while self.env.env.sims[idx].getState()[0].viewIndex != trg_point:  # Turn right until the target
                     take_action(i, idx, "right")
                     # print("RIGHT", flush=True)
                     # print(self.env.env.sims[idx].getState().viewIndex, trg_point, flush=True)
                 assert (
                     select_candidate["viewpointId"]
-                    == self.env.env.sims[idx]
-                    .getState()[0]
-                    .navigableLocations[select_candidate["idx"]]
-                    .viewpointId
+                    == self.env.env.sims[idx].getState()[0].navigableLocations[select_candidate["idx"]].viewpointId
                 )
                 take_action(i, idx, select_candidate["idx"])
 
@@ -175,16 +160,12 @@ class Speaker:
                         a[i] = k
                         break
                 else:  # Stop here
-                    assert (
-                        ob["teacher"] == ob["viewpoint"]
-                    )  # The teacher action should be "STAY HERE"
+                    assert ob["teacher"] == ob["viewpoint"]  # The teacher action should be "STAY HERE"
                     a[i] = len(ob["candidate"])
         return torch.from_numpy(a).cuda()
 
     def _candidate_variable(self, obs, actions):
-        candidate_feat = np.zeros(
-            (len(obs), self.feature_size + args.angle_feat_size), dtype=np.float32
-        )
+        candidate_feat = np.zeros((len(obs), self.feature_size + args.angle_feat_size), dtype=np.float32)
         for i, (ob, act) in enumerate(zip(obs, actions)):
             if act == -1:  # Ignore or Stop --> Just use zero vector as the feature
                 pass
@@ -200,19 +181,13 @@ class Speaker:
         :return:
         """
         obs = self.env._get_obs()
-        ended = np.array(
-            [False] * len(obs)
-        )  # Indices match permuation of the model, not env
+        ended = np.array([False] * len(obs))  # Indices match permuation of the model, not env
         length = np.zeros(len(obs), np.int64)
         img_feats = []
         can_feats = []
-        first_feat = np.zeros(
-            (len(obs), self.feature_size + args.angle_feat_size), np.float32
-        )
+        first_feat = np.zeros((len(obs), self.feature_size + args.angle_feat_size), np.float32)
         for i, ob in enumerate(obs):
-            first_feat[i, -args.angle_feat_size :] = utils.angle_feature(
-                ob["heading"], ob["elevation"]
-            )
+            first_feat[i, -args.angle_feat_size :] = utils.angle_feature(ob["heading"], ob["elevation"])
         first_feat = torch.from_numpy(first_feat).cuda()
         while not ended.all():
             if viewpoints is not None:
@@ -229,9 +204,7 @@ class Speaker:
             length += 1 - ended
             ended[:] = np.logical_or(ended, (teacher_action == -1))
             obs = self.env._get_obs()
-        img_feats = torch.stack(
-            img_feats, 1
-        ).contiguous()  # batch_size, max_len, 36, 2052
+        img_feats = torch.stack(img_feats, 1).contiguous()  # batch_size, max_len, 36, 2052
         can_feats = torch.stack(can_feats, 1).contiguous()  # batch_size, max_len, 2052
         if get_first_feat:
             return (img_feats, can_feats, first_feat), length
@@ -245,9 +218,7 @@ class Speaker:
         seq_tensor = np.array([ob["instr_encoding"] for ob in obs])
         return torch.from_numpy(seq_tensor).cuda()
 
-    def teacher_forcing(
-        self, train=True, features=None, insts=None, for_listener=False
-    ):
+    def teacher_forcing(self, train=True, features=None, insts=None, for_listener=False):
         if train:
             self.encoder.train()
             self.decoder.train()
@@ -268,12 +239,10 @@ class Speaker:
             (
                 img_feats,
                 can_feats,
-            ), lengths = (
-                self.from_shortest_path()
-            )  # Image Feature (from the shortest path)
+            ), lengths = self.from_shortest_path()  # Image Feature (from the shortest path)
             ctx = self.encoder(can_feats, img_feats, lengths)
-        h_t = torch.zeros(1, batch_size, args.rnn_dim).cuda()
-        c_t = torch.zeros(1, batch_size, args.rnn_dim).cuda()
+        h_t = torch.zeros(1, batch_size, args.rnn_dim, device=args.device)
+        c_t = torch.zeros(1, batch_size, args.rnn_dim, device=args.device)
         ctx_mask = utils.length2mask(lengths)
 
         # Get Language Input
@@ -303,18 +272,10 @@ class Speaker:
             # Evaluation
             _, predict = logits.max(dim=1)  # BATCH, LENGTH
             gt_mask = insts != self.tok.word_to_index["<PAD>"]
-            correct = (predict[:, :-1] == insts[:, 1:]) * gt_mask[
-                :, 1:
-            ]  # Not pad and equal to gt
-            correct, gt_mask = correct.type(torch.LongTensor), gt_mask.type(
-                torch.LongTensor
-            )
-            word_accu = (
-                correct.sum().item() / gt_mask[:, 1:].sum().item()
-            )  # Exclude <BOS>
-            sent_accu = (
-                correct.sum(dim=1) == gt_mask[:, 1:].sum(dim=1)
-            ).sum().item() / batch_size  # Exclude <BOS>
+            correct = (predict[:, :-1] == insts[:, 1:]) * gt_mask[:, 1:]  # Not pad and equal to gt
+            correct, gt_mask = correct.type(torch.LongTensor), gt_mask.type(torch.LongTensor)
+            word_accu = correct.sum().item() / gt_mask[:, 1:].sum().item()  # Exclude <BOS>
+            sent_accu = (correct.sum(dim=1) == gt_mask[:, 1:].sum(dim=1)).sum().item() / batch_size  # Exclude <BOS>
             return loss.item(), word_accu, sent_accu
 
     def infer_batch(self, sampling=False, train=False, featdropmask=None):
@@ -351,9 +312,7 @@ class Speaker:
             can_feats[..., : -args.angle_feat_size] *= featdropmask
 
         # Encoder
-        ctx = self.encoder(
-            can_feats, img_feats, lengths, already_dropfeat=(featdropmask is not None)
-        )
+        ctx = self.encoder(can_feats, img_feats, lengths, already_dropfeat=(featdropmask is not None))
         ctx_mask = utils.length2mask(lengths)
 
         # Decoder
@@ -364,21 +323,15 @@ class Speaker:
         h_t = torch.zeros(1, batch_size, args.rnn_dim).cuda()
         c_t = torch.zeros(1, batch_size, args.rnn_dim).cuda()
         ended = np.zeros(len(obs), np.bool)
-        word = (
-            np.ones(len(obs), np.int64) * self.tok.word_to_index["<BOS>"]
-        )  # First word is <BOS>
+        word = np.ones(len(obs), np.int64) * self.tok.word_to_index["<BOS>"]  # First word is <BOS>
         word = torch.from_numpy(word).view(-1, 1).cuda()
         for i in range(args.maxDecode):
             # Decode Step
-            logits, h_t, c_t = self.decoder(
-                word, ctx, ctx_mask, h_t, c_t
-            )  # Decode, logits: (b, 1, vocab_size)
+            logits, h_t, c_t = self.decoder(word, ctx, ctx_mask, h_t, c_t)  # Decode, logits: (b, 1, vocab_size)
 
             # Select the word
             logits = logits.squeeze()  # logits: (b, vocab_size)
-            logits[:, self.tok.word_to_index["<UNK>"]] = -float(
-                "inf"
-            )  # No <UNK> in infer
+            logits[:, self.tok.word_to_index["<UNK>"]] = -float("inf")  # No <UNK> in infer
             if sampling:
                 probs = F.softmax(logits, -1)
                 m = torch.distributions.Categorical(probs)
