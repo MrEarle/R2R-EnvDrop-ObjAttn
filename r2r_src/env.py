@@ -107,9 +107,6 @@ class EnvBatch:
         """
 
         feat_store = self.object_feat_store[f"{scanId}/{viewpointId}"]
-        # if not self.first_iter_done:
-        #     self.first_iter_done = True
-        #     print(feat_store.keys(), flush=True)
 
         roi = feat_store["features"][()]
         orients = feat_store["orientations"][()]
@@ -122,60 +119,6 @@ class EnvBatch:
             torch.from_numpy(bboxs),
             [name.decode("utf-8") for name in names],
         )
-
-        # WIDTH = 640
-        # HEIGHT = 480
-        # pos_tensor = []
-        # orient_tensor = []
-        # obj_names = []
-
-        # object_ds = self.object_info_store[scanId][viewpointId]
-
-        # for ix in range(36):
-        #     for (heading, elevation), bin_name in zip(object_ds["orientations"], object_ds["names"]):
-        #         heading, elevation = float(heading), float(elevation)
-        #         category = bin_name.decode("utf-8")
-
-        #         x, y = get_obj_coords(ix, elevation, heading, WIDTH=WIDTH, HEIGHT=HEIGHT)
-
-        #         if x is None or y is None:
-        #             continue
-
-        #         x_roi, y_roi = x // 32, y // 32
-
-        #         pos_tensor.append([ix, x_roi, y_roi])
-        #         obj_names.append(category)
-
-        #         orient_tensor.append([heading, elevation])
-        # orient_tensor = torch.from_numpy(np.array(orient_tensor))
-
-        # roi = []
-        # valid_indices = []
-        # for i, (view, x1, y1) in enumerate(pos_tensor):
-        #     x2 = x1 + 1
-        #     y2 = y1 + 1
-        #     if x2 >= WIDTH // 32 or y2 >= HEIGHT // 32:
-        #         continue
-        #     valid_indices.append(i)
-        #     roi.append(feat[view, :, y1 : y2 + 1, x1 : x2 + 1])
-
-        # if len(roi) == 0:
-        #     return torch.zeros((0, 2048, 2, 2)), torch.zeros((0, 2)), torch.zeros((0, 3)), []
-
-        # if not self.first_iter_done:
-        #     self.first_iter_done = True
-        #     print(
-        #         f"First object processinig done. Num objects processed for viewpoint id {viewpointId}: {len(roi)}",
-        #         flush=True,
-        #     )
-
-        # obj_names = [obj_names[i] for i in valid_indices]
-        # valid_indices = torch.LongTensor(valid_indices)
-        # roi = torch.stack(roi, dim=0)
-        # pos_tensor = torch.Tensor(pos_tensor).index_select(0, valid_indices)
-        # orient_tensor = orient_tensor.index_select(0, valid_indices)
-
-        # return roi, orient_tensor, pos_tensor, obj_names
 
     def getStates(self):
         """
@@ -417,7 +360,7 @@ class R2RBatch:
             return {}
 
         long_id = "%s_%s" % (scanId, viewpointId)
-        if long_id in self.buffered_obj_dict:
+        if args.buffer_objs and long_id in self.buffered_obj_dict:
             o_new = self.buffered_obj_dict[long_id].copy()
 
             obj_orients_norm = o_new["orients_normalized"]
@@ -446,10 +389,11 @@ class R2RBatch:
             "original_orient": original_orients_agent,
         }
 
-        self.buffered_obj_dict[long_id] = {
-            **obj_dict,
-            "orients_normalized": orient_tensor,
-        }
+        if args.buffer_objs:
+            self.buffered_obj_dict[long_id] = {
+                **obj_dict,
+                "orients_normalized": orient_tensor,
+            }
 
         obj_dict["orients"] = orient_feat
 

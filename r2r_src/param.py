@@ -194,7 +194,9 @@ class Param:
         self.parser.add_argument("--obj_aux_task_weight", type=float, default=0.1)
         self.parser.add_argument("--dataset", type=str, default="R2R")
         self.parser.add_argument("--include_objs", action="store_true")
+        self.parser.add_argument("--include_objs_lstm", action="store_true")
         self.parser.add_argument("--reduced_envs", action="store_true")
+        self.parser.add_argument("--buffer_objs", action="store_true")
 
         self.args, _ = self.parser.parse_known_args()
 

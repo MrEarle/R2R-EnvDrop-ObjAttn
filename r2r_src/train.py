@@ -138,7 +138,7 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
             )
 
 
-def train(train_env, tok, n_iters, log_every=50, val_envs={}, aug_env=None):
+def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
     writer = SummaryWriter(logdir=log_dir)
     listner = Seq2SeqAgent(train_env, "", tok, args.maxAction)
 

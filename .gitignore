@@ -8,8 +8,11 @@ build/
 snap/
 **data/
 metadata_parser
+metadata_parser/
 build
 .venv/
 **logs/
 *.profile
 profile.ipynb
+build
+snap
