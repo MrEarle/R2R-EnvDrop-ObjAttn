@@ -13,6 +13,7 @@ pp = pprint.PrettyPrinter(indent=4)
 from env import R2RBatch
 from utils import load_datasets, load_nav_graphs
 from agent import BaseAgent
+from param import args
 
 
 class Evaluation(object):
@@ -28,6 +29,8 @@ class Evaluation(object):
         for split in splits:
             for item in load_datasets([split]):
                 if scans is not None and item["scan"] not in scans:
+                    continue
+                if args.reduced_envs and item["scan"] not in args.reduced_env_ids:
                     continue
                 self.gt[str(item["path_id"])] = item
                 self.scans.append(item["scan"])
