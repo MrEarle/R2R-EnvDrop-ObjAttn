@@ -3,7 +3,7 @@
 #SBATCH --ntasks=1                  # Run only one task
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/obj_vis-aux01-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
-#SBATCH --nodelist=grievous
+#SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
 #SBATCH --gres=gpu
 #SBATCH --time=3-00:00

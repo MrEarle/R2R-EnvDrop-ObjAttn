@@ -224,8 +224,8 @@ args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
 # * ============= My Args ==============
 # args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
 # args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
-args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/object_features.h5"
-args.OBJECT_CLASS_FILE = "/home/mrearle/storage/img_features/object_classes.json"
+args.OBJECT_FEATURES = "/workspace1/mrearle/object_features.hdf5"
+args.OBJECT_CLASS_FILE = "/workspace1/mrearle/object_classes.json"
 
 with open(args.OBJECT_CLASS_FILE, "r") as f:
     objs = json.load(f)

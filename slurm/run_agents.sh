@@ -1,5 +1,5 @@
 #!/bin/bash
 
-sbatch slurm/agent.sh
-sbatch slurm/agent_aux.sh
-sbatch slurm/agent_aux_01.sh
+sbatch slurm/obj_vis.sh
+sbatch slurm/obj_vis-aux1.sh
+sbatch slurm/obj_vis-aux01.sh
