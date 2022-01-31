@@ -5,7 +5,7 @@
 #SBATCH --partition=ialab-high
 #SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
-#SBATCH --gres=gpu
+#SBATCH --gres=gpu:1080Ti:1
 #SBATCH --mem=24gb
 #SBATCH --time=0-03:00
 
@@ -22,10 +22,10 @@ flag="--attn soft --train listener
       --angleFeatSize 128
       --feedback sample
       --mlWeight 0.2
-      --obj_aux_task
       --include_objs
-      --reduced_envs
+      --obj_aux_task
       --obj_aux_task_weight 0.1
+      --reduced_envs
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

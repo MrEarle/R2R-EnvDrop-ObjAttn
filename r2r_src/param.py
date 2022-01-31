@@ -257,5 +257,6 @@ if not os.path.exists(args.log_dir):
 DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
 args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {args.device}", flush=True)
+print(torch.cuda.get_device_properties(args.device), flush=True)
 
 print(f"\n\n\tTraining model {args.name}\n\n", flush=True)

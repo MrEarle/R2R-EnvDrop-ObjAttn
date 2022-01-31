@@ -168,11 +168,11 @@ class Seq2SeqAgent(BaseAgent):
         obj_feat_shape = [2048, 2, 2]
         angle_enc_size = args.angle_feat_size
 
-        obj_feats = torch.zeros((len(obs), max_objs, *obj_feat_shape), dtype=torch.float32)
-        obj_headings = torch.zeros((len(obs), max_objs, angle_enc_size), dtype=torch.float32)
-        obj_classes = torch.zeros((len(obs), max_objs), dtype=torch.int32)
-        mask = torch.zeros((len(obs), max_objs), dtype=torch.int32)
-        sample_indices = torch.zeros((len(obs), max_objs), dtype=torch.int32)
+        obj_feats = np.zeros((len(obs), max_objs, *obj_feat_shape), dtype=np.float32)
+        obj_headings = np.zeros((len(obs), max_objs, angle_enc_size), dtype=np.float32)
+        obj_classes = np.zeros((len(obs), max_objs), dtype=np.int32)
+        mask = np.zeros((len(obs), max_objs), dtype=np.int32)
+        sample_indices = np.zeros((len(obs), max_objs), dtype=np.int32)
 
         if args.include_objs:
             for i, ob in enumerate(obs):
@@ -183,21 +183,25 @@ class Seq2SeqAgent(BaseAgent):
                 if objs_to_sample == 0:
                     continue
 
-                sample_indices[i, :objs_to_sample] = torch.from_numpy(
-                    np.random.choice(
-                        np.arange(len(objs["class_ids"]), dtype=np.int32),
-                        objs_to_sample,
-                        replace=False,
-                    )
+                sample_indices[i, :objs_to_sample] = np.random.choice(
+                    np.arange(len(objs["class_ids"]), dtype=np.int32),
+                    objs_to_sample,
+                    replace=False,
                 )
 
                 sample = sample_indices[i, :objs_to_sample]
-                obj_headings[i, :objs_to_sample] = torch.index_select(objs["orients"], 0, sample)
-                obj_feats[i, :objs_to_sample] = torch.index_select(objs["feats"], 0, sample)
-                obj_classes[i, :objs_to_sample] = torch.index_select(objs["class_ids"], 0, sample)
+                obj_headings[i, :objs_to_sample] = objs["orients"][sample]
+                obj_feats[i, :objs_to_sample] = objs["feats"][sample]
+                obj_classes[i, :objs_to_sample] = objs["class_ids"][sample]
                 mask[i, :objs_to_sample] = 1
 
-        return obj_headings.cuda(), obj_feats.cuda(), mask.cuda(), obj_classes.cuda(), sample_indices
+        return (
+            torch.from_numpy(obj_headings).cuda(),
+            torch.from_numpy(obj_feats).cuda(),
+            torch.from_numpy(mask).cuda(),
+            torch.from_numpy(obj_classes).cuda(),
+            sample_indices,
+        )
 
     def _feature_variable(self, obs):
         """Extract precomputed features into variable."""
@@ -207,7 +211,7 @@ class Seq2SeqAgent(BaseAgent):
         )
         for i, ob in enumerate(obs):
             features[i, :, :] = ob["feature"]  # Image feat
-        return Variable(torch.from_numpy(features), requires_grad=False).cuda()
+        return torch.from_numpy(features).cuda()
 
     def _candidate_variable(self, obs):
         candidate_leng = [len(ob["candidate"]) + 1 for ob in obs]  # +1 is for the end
@@ -375,6 +379,7 @@ class Seq2SeqAgent(BaseAgent):
         masks = []
         entropys = []
         ml_loss = 0.0
+        obj_loss = 0.0
 
         h1 = h_t
         for t in range(self.episode_len):
@@ -391,19 +396,18 @@ class Seq2SeqAgent(BaseAgent):
                 candidate_feat[..., : -args.angle_feat_size] *= noise
                 f_t[..., : -args.angle_feat_size] *= noise
 
-            # ! Paso la informacion de la trayectoria para poder conectar con atenciones en analisis
-            traj_info_keys = [
-                "instr_id",
-                "scan",
-                "viewpoint",
-                "viewIndex",
-                "objects",
-                "heading",
-                "elevation",
-                "candidate",
-            ]
-
             if args.logging_vis:
+                # ! Paso la informacion de la trayectoria para poder conectar con atenciones en analisis
+                traj_info_keys = [
+                    "instr_id",
+                    "scan",
+                    "viewpoint",
+                    "viewIndex",
+                    "objects",
+                    "heading",
+                    "elevation",
+                    "candidate",
+                ]
                 traj_info = [
                     {**{x: ob[x] for x in traj_info_keys}, "obj_sample": obj_sample, "mask": msk}
                     for ob, obj_sample, msk in zip(perm_obs, sample_indices, obj_mask)
@@ -448,8 +452,7 @@ class Seq2SeqAgent(BaseAgent):
             if args.obj_aux_task:
                 obj_scores = obj_scores.view(-1, args.num_obj_classes)
                 obj_target = obj_classes.view(-1).long()
-                obj_loss = self.obj_supervision(obj_scores, obj_target)
-                ml_loss += obj_loss * self.obj_supervision_weight
+                obj_loss += self.obj_supervision(obj_scores, obj_target)
 
             # Determine next model inputs
             if self.feedback == "teacher":
@@ -521,6 +524,7 @@ class Seq2SeqAgent(BaseAgent):
                 break
 
         if args.obj_aux_task:
+            ml_loss += obj_loss * self.obj_supervision_weight
             self.logs["obj_loss"].append(obj_loss.item())
         self.logs["ml_loss"].append(ml_loss.item())
 
@@ -565,9 +569,9 @@ class Seq2SeqAgent(BaseAgent):
             total = 0
             for t in range(length - 1, -1, -1):
                 discount_reward = discount_reward * args.gamma + rewards[t]  # If it ended, the reward will be 0
-                mask_ = Variable(torch.from_numpy(masks[t]), requires_grad=False).cuda()
+                mask_ = torch.from_numpy(masks[t]).cuda()
                 clip_reward = discount_reward.copy()
-                r_ = Variable(torch.from_numpy(clip_reward), requires_grad=False).cuda()
+                r_ = torch.from_numpy(clip_reward).cuda()
                 v_ = self.critic(hidden_states[t])
                 a_ = (r_ - v_).detach()
 

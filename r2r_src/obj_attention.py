@@ -153,7 +153,7 @@ class ObjectHeadingViewpointSimilarity(nn.Module):
             projected_viewpoint_heading,
         )
 
-        # ? Normalizar heading similarity para que sea un score. Quizas softmax?
+        # Normalizar heading similarity para que sea un score
         heading_similarity = self.softmax(heading_similarity)
 
         # [batch, num_viewpoints, num_objs, obj_feat_size]
@@ -275,25 +275,37 @@ class ConnectionwiseObjectAttention(BaseObjAttn):
 
         # Concatenate object encoding with heading encoding
         # and perform attention over objects, based on instruction context
-        attended_objects = []  # [[batch, 1, obj_attn_size] * num_viewpoints]
-        attn_weights = []  # [[batch, 1, num_objs] * num_viewpoints]
-        for view_id in range(viewpoint_objs.shape[1]):
-            objs = torch.cat(
-                [viewpoint_objs[:, view_id, :, :], object_headings],
-                dim=-1,
-            )
+        batch_size = viewpoint_objs.shape[0]
+        num_viewpoints = viewpoint_objs.shape[1]
 
-            # [batch, 1, self._obj_attn_size], [batch, 1, num_objs]
-            attn_objs, attn_weight = self._obj_attention(objs, text_context, obj_mask=obj_mask)
+        # [batch, num_objs, direction_feats] -> [batch, num_viewpoints, num_objs, direction_feats]
+        repeated_headings = object_headings.unsqueeze(1).repeat_interleave(num_viewpoints, dim=1)
 
-            attended_objects.append(attn_objs)
-            attn_weights.append(attn_weight)
+        # [batch, num_objs] -> [batch, num_viewpoints, num_objs]
+        repeated_obj_mask = obj_mask.unsqueeze(1).repeat_interleave(num_viewpoints, dim=1)
 
-        # shape: [batch, num_viewpoints, obj_attn_size]
-        attended_objects = torch.stack(attended_objects, dim=1).squeeze()
+        # [batch, ctx_size] -> [batch, num_viewpoints, ctx_size]
+        repeated_text_ctx = text_context.unsqueeze(1).repeat_interleave(num_viewpoints, dim=1)
 
-        # shape: [batch, num_viewpoints, num_objs]
-        attn_weights = torch.stack(attn_weights, dim=1)
+        # [batch, num_viewpoints, num_objs, obj_attn_size + direction_feat]
+        objs = torch.cat((viewpoint_objs, repeated_headings), dim=-1)
+
+        # Join batch and num_viewpoints
+        # [batch * num_viewpoints, num_objs, obj_attn_size + direction_feat]
+        objs = objs.view((-1, *objs.shape[-2:]))
+        # [batch * num_viewpoints, num_objs]
+        repeated_obj_mask = repeated_obj_mask.view((-1, repeated_obj_mask.shape[-1]))
+        # [batch * num_viewpoints, ctx_size]
+        repeated_text_ctx = repeated_text_ctx.view((-1, repeated_text_ctx.shape[-1]))
+
+        # Perform attn
+        # attended_objects = [batch * num_viewpoints, 1, obj_attn_size + direction_feat]
+        # attn_weights = [batch * num_viewpoints, 1, num_objs]
+        attended_objects, attn_weights = self._obj_attention(objs, repeated_text_ctx, obj_mask=repeated_obj_mask)
+
+        # Split batch and num_viewpoints
+        attended_objects = attended_objects.view((batch_size, num_viewpoints, -1))
+        attn_weights = attn_weights.view((batch_size, num_viewpoints, -1))
 
         return attended_objects, attn_weights
 

@@ -167,135 +167,117 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
         "val_seen": {"accu": 0.0, "state": "", "update": False},
         "val_unseen": {"accu": 0.0, "state": "", "update": False},
     }
-    if args.fast_train or args.reduced_envs:
-        log_every = 5
-        n_iters = 30
+    if args.fast_train:
+        log_every = 20
 
-    schedule = prof.schedule(
-        skip_first=0,
-        wait=1,
-        warmup=1,
-        active=3,
-        repeat=2,
-    )
+    for idx in range(start_iter, start_iter + n_iters, log_every):
+        listner.logs = defaultdict(list)
+        interval = min(log_every, n_iters - idx)
+        iter = idx + interval
 
-    with prof.profile(
-        activities=[prof.ProfilerActivity.CPU, prof.ProfilerActivity.CUDA],
-        schedule=schedule,
-        on_trace_ready=on_profile_step,
-        use_cuda=True,
-        profile_memory=True,
-        with_stack=True,
-    ) as pfiler:
-        for idx in range(start_iter, start_iter + n_iters, log_every):
-            listner.logs = defaultdict(list)
-            interval = min(log_every, n_iters - idx)
-            iter = idx + interval
+        # Train for log_every interval
+        if aug_env is None:  # The default training process
+            listner.env = train_env
+            listner.train(interval, feedback=feedback_method)  # Train interval iters
+        else:
+            if args.accumulate_grad:
+                for _ in range(interval // 2):
+                    listner.zero_grad()
+                    listner.env = train_env
 
-            # Train for log_every interval
-            if aug_env is None:  # The default training process
-                listner.env = train_env
-                listner.train(interval, feedback=feedback_method)  # Train interval iters
-                pfiler.step()
+                    # Train with GT data
+                    args.ml_weight = 0.2
+                    listner.accumulate_gradient(feedback_method)
+                    listner.env = aug_env
+
+                    # Train with Back Translation
+                    args.ml_weight = 0.6  # Sem-Configuration
+                    listner.accumulate_gradient(feedback_method, speaker=speaker)
+                    listner.optim_step()
             else:
-                if args.accumulate_grad:
-                    for _ in range(interval // 2):
-                        listner.zero_grad()
-                        listner.env = train_env
+                for _ in range(interval // 2):
+                    # Train with GT data
+                    listner.env = train_env
+                    args.ml_weight = 0.2
+                    listner.train(1, feedback=feedback_method)
 
-                        # Train with GT data
-                        args.ml_weight = 0.2
-                        listner.accumulate_gradient(feedback_method)
-                        listner.env = aug_env
+                    # Train with Back Translation
+                    listner.env = aug_env
+                    args.ml_weight = 0.6
+                    listner.train(1, feedback=feedback_method, speaker=speaker)
 
-                        # Train with Back Translation
-                        args.ml_weight = 0.6  # Sem-Configuration
-                        listner.accumulate_gradient(feedback_method, speaker=speaker)
-                        listner.optim_step()
-                else:
-                    for _ in range(interval // 2):
-                        # Train with GT data
-                        listner.env = train_env
-                        args.ml_weight = 0.2
-                        listner.train(1, feedback=feedback_method)
+        # Log the training stats to tensorboard
+        total = max(sum(listner.logs["total"]), 1)
+        length = max(len(listner.logs["critic_loss"]), 1)
+        critic_loss = sum(listner.logs["critic_loss"]) / total  # / length / args.batchSize
+        if args.obj_aux_task:
+            obj_loss = sum(listner.logs["obj_loss"]) / total  # / length / args.batchSize
+            writer.add_scalar("loss/object", obj_loss, idx)
+        ml_loss = sum(listner.logs["ml_loss"]) / total  # / length / args.batchSize
+        entropy = sum(listner.logs["entropy"]) / total  # / length / args.batchSize
+        predict_loss = sum(listner.logs["us_loss"]) / max(len(listner.logs["us_loss"]), 1)
+        writer.add_scalar("loss/critic", critic_loss, idx)
+        writer.add_scalar("policy_entropy", entropy, idx)
+        writer.add_scalar("loss/unsupervised", predict_loss, idx)
+        writer.add_scalar("total_actions", total, idx)
+        writer.add_scalar("max_length", length, idx)
+        writer.add_scalar("loss/supervised", ml_loss, idx)
+        print("total_actions", total, flush=True)
+        print("max_length", length, flush=True)
 
-                        # Train with Back Translation
-                        listner.env = aug_env
-                        args.ml_weight = 0.6
-                        listner.train(1, feedback=feedback_method, speaker=speaker)
+        # Run validation
+        loss_str = ""
+        for env_name, (env, evaluator) in val_envs.items():
+            listner.env = env
 
-            # Log the training stats to tensorboard
-            total = max(sum(listner.logs["total"]), 1)
-            length = max(len(listner.logs["critic_loss"]), 1)
-            critic_loss = sum(listner.logs["critic_loss"]) / total  # / length / args.batchSize
-            if args.obj_aux_task:
-                obj_loss = sum(listner.logs["obj_loss"]) / total  # / length / args.batchSize
-                writer.add_scalar("loss/object", obj_loss, idx)
-            ml_loss = sum(listner.logs["ml_loss"]) / total  # / length / args.batchSize
-            entropy = sum(listner.logs["entropy"]) / total  # / length / args.batchSize
-            predict_loss = sum(listner.logs["us_loss"]) / max(len(listner.logs["us_loss"]), 1)
-            writer.add_scalar("loss/critic", critic_loss, idx)
-            writer.add_scalar("policy_entropy", entropy, idx)
-            writer.add_scalar("loss/unsupervised", predict_loss, idx)
-            writer.add_scalar("total_actions", total, idx)
-            writer.add_scalar("max_length", length, idx)
-            writer.add_scalar("loss/supervised", ml_loss, idx)
-            print("total_actions", total, flush=True)
-            print("max_length", length, flush=True)
+            # Get validation loss under the same conditions as training
+            iters = None if args.fast_train or env_name != "train" else 20  # 20 * 64 = 1280
 
-            # Run validation
-            loss_str = ""
-            for env_name, (env, evaluator) in val_envs.items():
-                listner.env = env
+            # Get validation distance from goal under test evaluation conditions
+            listner.test(use_dropout=False, feedback="argmax", iters=iters)
+            result = listner.get_results()
+            score_summary, _ = evaluator.score(result)
+            loss_str += ", %s " % env_name
+            for metric, val in score_summary.items():
+                if metric in ["success_rate"]:
+                    writer.add_scalar("accuracy/%s" % env_name, val, idx)
+                    if env_name in best_val:
+                        if val > best_val[env_name]["accu"]:
+                            best_val[env_name]["accu"] = val
+                            best_val[env_name]["update"] = True
+                loss_str += ", %s: %.3f" % (metric, val)
 
-                # Get validation loss under the same conditions as training
-                iters = None if args.fast_train or env_name != "train" else 20  # 20 * 64 = 1280
+        for env_name in best_val:
+            if best_val[env_name]["update"]:
+                best_val[env_name]["state"] = "Iter %d %s" % (iter, loss_str)
+                best_val[env_name]["update"] = False
+                listner.save(
+                    idx,
+                    os.path.join("snap", args.name, "state_dict", "best_%s" % (env_name)),
+                )
 
-                # Get validation distance from goal under test evaluation conditions
-                listner.test(use_dropout=False, feedback="argmax", iters=iters)
-                result = listner.get_results()
-                score_summary, _ = evaluator.score(result)
-                loss_str += ", %s " % env_name
-                for metric, val in score_summary.items():
-                    if metric in ["success_rate"]:
-                        writer.add_scalar("accuracy/%s" % env_name, val, idx)
-                        if env_name in best_val:
-                            if val > best_val[env_name]["accu"]:
-                                best_val[env_name]["accu"] = val
-                                best_val[env_name]["update"] = True
-                    loss_str += ", %s: %.3f" % (metric, val)
+        print(
+            (
+                "%s (%d %d%%) %s"
+                % (
+                    timeSince(start, float(iter) / n_iters),
+                    iter,
+                    float(iter) / n_iters * 100,
+                    loss_str,
+                )
+            ),
+            flush=True,
+        )
 
+        if iter % 1000 == 0:
+            print("BEST RESULT TILL NOW", flush=True)
             for env_name in best_val:
-                if best_val[env_name]["update"]:
-                    best_val[env_name]["state"] = "Iter %d %s" % (iter, loss_str)
-                    best_val[env_name]["update"] = False
-                    listner.save(
-                        idx,
-                        os.path.join("snap", args.name, "state_dict", "best_%s" % (env_name)),
-                    )
+                print(env_name, best_val[env_name]["state"], flush=True)
 
-            print(
-                (
-                    "%s (%d %d%%) %s"
-                    % (
-                        timeSince(start, float(iter) / n_iters),
-                        iter,
-                        float(iter) / n_iters * 100,
-                        loss_str,
-                    )
-                ),
-                flush=True,
-            )
+        if iter % 50000 == 0:
+            listner.save(idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
 
-            if iter % 1000 == 0:
-                print("BEST RESULT TILL NOW", flush=True)
-                for env_name in best_val:
-                    print(env_name, best_val[env_name]["state"], flush=True)
-
-            if iter % 50000 == 0:
-                listner.save(idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
-
-        listner.save(idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
+    listner.save(idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
 
 
 def valid(train_env, tok, val_envs={}):
@@ -461,10 +443,13 @@ def train_val():
     tok = Tokenizer(vocab=vocab, encoding_length=args.maxInput)
 
     feat_h5 = h5py.File(features, "r")
+    obj_feat_h5 = h5py.File(args.OBJECT_FEATURES, "r")
 
     featurized_scans = set(feat_h5.keys())
 
-    train_env = R2RBatch(feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
+    train_env = R2RBatch(
+        feature_store=feat_h5, object_feat_store=obj_feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok
+    )
     from collections import OrderedDict
 
     val_env_names = ["val_unseen", "val_seen"]
@@ -483,7 +468,8 @@ def train_val():
                 split,
                 (
                     R2RBatch(
-                        feat_h5,
+                        feature_store=feat_h5,
+                        object_feat_store=obj_feat_h5,
                         batch_size=args.batchSize,
                         splits=[split],
                         tokenizer=tok,
@@ -548,6 +534,7 @@ def train_val_augment():
 
     # Load the env img features
     feat_h5 = h5py.File(features, "r")
+    obj_feat_h5 = h5py.File(args.OBJECT_FEATURES, "r")
 
     featurized_scans = set(feat_h5.keys())
 
@@ -555,9 +542,12 @@ def train_val_augment():
     aug_path = args.aug
 
     # Create the training environment
-    train_env = R2RBatch(feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok)
+    train_env = R2RBatch(
+        feature_store=feat_h5, object_feat_store=obj_feat_h5, batch_size=args.batchSize, splits=["train"], tokenizer=tok
+    )
     aug_env = R2RBatch(
-        feat_h5,
+        feature_store=feat_h5,
+        object_feat_store=obj_feat_h5,
         batch_size=args.batchSize,
         splits=[aug_path],
         tokenizer=tok,
@@ -589,7 +579,13 @@ def train_val_augment():
     # Setup the validation data
     val_envs = {
         split: (
-            R2RBatch(feat_h5, batch_size=args.batchSize, splits=[split], tokenizer=tok),
+            R2RBatch(
+                feature_store=feat_h5,
+                object_feat_store=obj_feat_h5,
+                batch_size=args.batchSize,
+                splits=[split],
+                tokenizer=tok,
+            ),
             Evaluation([split], featurized_scans, tok),
         )
         for split in ["train", "val_seen", "val_unseen"]

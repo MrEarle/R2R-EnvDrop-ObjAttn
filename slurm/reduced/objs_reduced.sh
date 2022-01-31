@@ -5,8 +5,9 @@
 #SBATCH --partition=ialab-high
 #SBATCH --nodelist=grievous
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
-#SBATCH --gres=gpu
+#SBATCH --gres=gpu:1080Ti:1
 #SBATCH --time=3-00:00
+#SBATCH --mem=24gb
 
 pwd; hostname; date
 

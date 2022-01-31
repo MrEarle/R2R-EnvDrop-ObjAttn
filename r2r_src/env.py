@@ -25,6 +25,7 @@ import torch
 import torchvision
 from param import args
 import h5py
+import numpy as np
 
 from utils import load_datasets, load_nav_graphs, Tokenizer
 
@@ -35,7 +36,7 @@ class EnvBatch:
     """A simple wrapper for a batch of MatterSim environments,
     using discretized viewpoints and pretrained features"""
 
-    def __init__(self, feature_store=None, batch_size=100):
+    def __init__(self, feature_store: h5py.File = None, batch_size=100, object_feat_store: h5py.File = None):
         """
         1. Load pretrained image feature
         2. Init the Simulator.
@@ -81,8 +82,7 @@ class EnvBatch:
             self.sims.append(sim)
 
         if args.include_objs:
-            self.object_feat_store = h5py.File(args.OBJECT_FEATURES, "r")
-            # self.object_info_store = h5py.File(args.OBJECT_PROPOSALS, "r")
+            self.object_feat_store = object_feat_store
             with open(args.OBJECT_CLASS_FILE, "r") as f:
                 self.object_classes = json.load(f)
         self.first_iter_done = False
@@ -91,6 +91,7 @@ class EnvBatch:
         return scanId + "_" + viewpointId
 
     def newEpisodes(self, scanIds, viewpointIds, headings):
+        # self.sims.newEpisode(scanIds, viewpointIds, headings, [0] * len(scanIds))
         for i, (scanId, viewpointId, heading) in enumerate(zip(scanIds, viewpointIds, headings)):
             # print("New episode %d" % i, flush=True)
             # sys.stdout.flush()
@@ -98,7 +99,7 @@ class EnvBatch:
 
     def getViewpointObjects(
         self, scanId: str, viewpointId: str
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, List[str]]:
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[str]]:
         """
         Get the list of object features in the current viewpoint.
         :param scanId:
@@ -114,9 +115,9 @@ class EnvBatch:
         names = feat_store["names"][()]
 
         return (
-            torch.from_numpy(roi),
-            torch.from_numpy(orients),
-            torch.from_numpy(bboxs),
+            roi,
+            orients,
+            bboxs,
             [name.decode("utf-8") for name in names],
         )
 
@@ -131,7 +132,7 @@ class EnvBatch:
         for i, sim in enumerate(self.sims):
             state = sim.getState()[0]
 
-            long_id = self._make_id(state.scanId, state.location.viewpointId)
+            # long_id = self._make_id(state.scanId, state.location.viewpointId)
             if self.features:
                 feature = self.features[state.scanId][state.location.viewpointId]  # Get feature for
                 feature_states.append((feature, state))
@@ -151,14 +152,15 @@ class R2RBatch:
 
     def __init__(
         self,
-        feature_store,
+        feature_store: h5py.File,
+        object_feat_store: h5py.File,
         batch_size=100,
         seed=10,
         splits=["train"],
         tokenizer=None,
         name=None,
     ):
-        self.env = EnvBatch(feature_store=feature_store, batch_size=batch_size)
+        self.env = EnvBatch(feature_store=feature_store, object_feat_store=object_feat_store, batch_size=batch_size)
         if feature_store:
             self.feature_size = self.env.feature_size
         self.data = []
@@ -274,6 +276,7 @@ class R2RBatch:
         if long_id not in self.buffered_state_dict:
 
             for ix in range(36):
+                #! Hacer el barrido por las 36 imagenes de la panoramica
                 if ix == 0:
                     self.sim.newEpisode([scanId], [viewpointId], [0], [math.radians(-30)])
                 elif ix % 12 == 0:
@@ -281,6 +284,7 @@ class R2RBatch:
                 else:
                     self.sim.makeAction([0], [1.0], [0])
 
+                #! El estado de que imagen de la panoramica estoy mirando
                 state = self.sim.getState()[0]
                 assert state.viewIndex == ix
 
@@ -288,6 +292,7 @@ class R2RBatch:
                 heading = state.heading - base_heading  #! Heading del view, relativo al agente
                 elevation = state.elevation
 
+                #! Feature visual de la ix imagen de la panoramica
                 visual_feat = feature[ix]
 
                 # get adjacent locations
@@ -355,10 +360,12 @@ class R2RBatch:
 
             return candidate_new
 
-    def make_objs(self, scanId: str, viewpointId: str, agent_head: float, agent_el: float) -> dict:
+    def make_objs(self, scanId: str, viewpointId: str, view_index: int) -> dict:
         if not args.include_objs:
             return {}
 
+        agent_head = (view_index % 12) * math.radians(30)
+        agent_el = ((view_index // 12) - 1) * math.radians(30)
         long_id = "%s_%s" % (scanId, viewpointId)
         if args.buffer_objs and long_id in self.buffered_obj_dict:
             o_new = self.buffered_obj_dict[long_id].copy()
@@ -368,24 +375,22 @@ class R2RBatch:
             original_orients_agent = obj_orients_norm.clone()
             original_orients_agent[:, 0] -= agent_head
             original_orients_agent[:, 1] -= agent_el
-            o_new["orients"] = torch.Tensor(
-                [utils.angle_feature(head, elev) for (head, elev) in original_orients_agent]
-            )
+            o_new["orients"] = np.array([utils.angle_feature(head, elev) for (head, elev) in original_orients_agent])
             o_new.pop("orients_normalized")
             return o_new
 
         roi, orient_tensor, pos_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
 
-        original_orients_agent = orient_tensor.clone()
+        original_orients_agent = orient_tensor.copy()
         original_orients_agent[:, 0] -= agent_head
         original_orients_agent[:, 1] -= agent_el
-        orient_feat = torch.Tensor([utils.angle_feature(head, elev) for (head, elev) in original_orients_agent])
+        orient_feat = np.array([utils.angle_feature(head, elev) for (head, elev) in original_orients_agent])
 
         obj_dict = {
             "feats": roi,
             "bboxs": pos_tensor,
             "names": obj_names,
-            "class_ids": torch.LongTensor([self.env.object_classes.index(obj_name) for obj_name in obj_names]),
+            "class_ids": np.array([self.env.object_classes.index(obj_name) for obj_name in obj_names], dtype=np.int32),
             "original_orient": original_orients_agent,
         }
 
@@ -409,12 +414,12 @@ class R2RBatch:
             candidate = self.make_candidate(feature, state.scanId, state.location.viewpointId, state.viewIndex)
 
             # Objects
-            objects = self.make_objs(state.scanId, state.location.viewpointId, state.heading, state.elevation)
+            objects = self.make_objs(state.scanId, state.location.viewpointId, state.viewIndex)
 
             # (visual_feature, angel_feature) for views
             feature = np.concatenate(
                 (feature, self.angle_feature[base_view_id]), -1
-            )  #! Se agrega feats angulares de imagen mirada
+            )  #! Se agrega feats angulares de cada imagen de la panoramica, relativa al agente
 
             obs.append(
                 {
