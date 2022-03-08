@@ -8,6 +8,8 @@
 #SBATCH --gres=gpu:1080Ti:1
 #SBATCH --time=3-00:00
 #SBATCH --mem=24gb
+#SBATCH --mail-type=END,FAIL          # Mail events (NONE, BEGIN, END, FAIL, ALL)
+#SBATCH --mail-user=biearle@uc.cl     # Where to send mail	
 
 pwd; hostname; date
 
@@ -19,6 +21,7 @@ echo "Starting agent training"
 name="agent_objs" # Reduced!
 flag="--attn soft --train listener 
       --featdropout 0.3
+      --load snap/agent_objs-reduced/state_dict/best_val_unseen
       --angleFeatSize 128
       --feedback sample
       --mlWeight 0.2

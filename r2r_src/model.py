@@ -194,7 +194,7 @@ class AttnDecoderLSTM(nn.Module):
         feature: batch x 36 x (feature_size + angle_feat_size) # ! Feature
         cand_feat: batch x cand x (feature_size + angle_feat_size) # ! Conexioens
         h_0: batch x hidden_size
-        prev_h1: batch x hidden_size
+        prev_h1: batch x hidden_size # ! h_tilde
         c_0: batch x hidden_size
         ctx: batch x seq_len x dim # ! Instruccion codificada
         obj_heads: batch x num_objs x angle_feat_size # ! Object headings

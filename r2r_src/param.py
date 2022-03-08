@@ -67,7 +67,7 @@ SMALL_SPLITS = {
 
 class Param:
     def __init__(self):
-        self.parser = argparse.ArgumentParser(description="")
+        self.parser = argparse.ArgumentParser(description="", allow_abbrev=False)
 
         # General
         self.parser.add_argument("--iters", type=int, default=100000)
@@ -243,6 +243,8 @@ for env_ids in SMALL_SPLITS.values():
 # args.obj_aux_task_weight = 0.1
 # args.dataset = "R2R"
 
+if args.max_obj_number != 20:
+    args.name += f"-obj({args.max_obj_number})"
 if args.obj_aux_task:
     args.name += f"-aux({args.obj_aux_task_weight})"
 if args.reduced_envs:

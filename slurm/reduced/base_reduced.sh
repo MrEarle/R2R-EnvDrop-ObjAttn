@@ -16,7 +16,7 @@ source /home/mrearle/venvs/r2r/bin/activate
 export HDF5_USE_FILE_LOCKING="FALSE"
 echo "Starting agent training"
 
-name="agent_base" # Reduced!
+name="agent_base2" # Reduced!
 flag="--attn soft --train listener 
       --featdropout 0.3
       --angleFeatSize 128

@@ -1,12 +1,15 @@
 #!/bin/bash
-#SBATCH --job-name=more_obj-aux01
+#SBATCH --job-name=more_obj32-aux01
 #SBATCH --ntasks=1                  # Run only one task
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/more_obj-aux01-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
-#SBATCH --nodelist=grievous
+#SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
-#SBATCH --gres=gpu
+#SBATCH --mem=32gb
+#SBATCH --gres=gpu:TitanRTX
 #SBATCH --time=3-00:00
+#SBATCH --mail-type=END,FAIL          # Mail events (NONE, BEGIN, END, FAIL, ALL)
+#SBATCH --mail-user=biearle@uc.cl     # Where to send mail	
 
 pwd; hostname; date
 
@@ -15,7 +18,7 @@ source /home/mrearle/venvs/r2r/bin/activate
 export HDF5_USE_FILE_LOCKING="FALSE"
 echo "Starting agent training"
 # bash /home/mrearle/repos/R2R-EnvDrop-ObjAttn/run/agent_aux_01.bash 0
-name="agent_obj(64)"
+name="agent_obj"
 flag="--attn soft --train listener
       --featdropout 0.3
       --angleFeatSize 128
