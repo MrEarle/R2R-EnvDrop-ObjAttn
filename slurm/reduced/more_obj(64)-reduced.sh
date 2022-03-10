@@ -27,6 +27,7 @@ flag="--attn soft --train listener
       --include_objs
       --max_obj_number 64
       --reduced_envs
+      --load snap/agent-obj(64)-reduced/state_dict/best_val_unseen
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

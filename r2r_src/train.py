@@ -40,7 +40,7 @@ warnings.filterwarnings("ignore")
 from tensorboardX import SummaryWriter
 
 
-log_dir = "snap/%s" % args.name
+log_dir = "snap/%s" % args.save_dir
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
@@ -137,12 +137,6 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
                 "Bleu 1: %0.4f Bleu 2: %0.4f, Bleu 3 :%0.4f,  Bleu 4: %0.4f" % tuple(precisions),
                 flush=True,
             )
-
-
-def on_profile_step(p):
-    print("Profiling step!", flush=True)
-    print(p.key_averages().table(sort_by="self_cuda_time_total", row_limit=10), flush=True)
-    p.export_chrome_trace(f"trace_{args.name}_{p.step}.json")
 
 
 def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
@@ -253,7 +247,7 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                 best_val[env_name]["update"] = False
                 listner.save(
                     idx,
-                    os.path.join("snap", args.name, "state_dict", "best_%s" % (env_name)),
+                    os.path.join("snap", args.save_dir, "state_dict", "best_%s" % (env_name)),
                 )
 
         print(
@@ -275,9 +269,9 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                 print(env_name, best_val[env_name]["state"], flush=True)
 
         if iter % 50000 == 0:
-            listner.save(idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
+            listner.save(idx, os.path.join("snap", args.save_dir, "state_dict", "Iter_%06d" % (iter)))
 
-    listner.save(idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
+    listner.save(idx, os.path.join("snap", args.save_dir, "state_dict", "LAST_iter%d" % (idx)))
 
 
 def valid(train_env, tok, val_envs={}):

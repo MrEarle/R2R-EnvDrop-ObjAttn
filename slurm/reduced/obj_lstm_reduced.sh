@@ -29,6 +29,7 @@ flag="--attn soft --train listener
       --obj_aux_task_weight 0.1
       --reduced_envs
       --include_objs_lstm
+      --load snap/obj_lstm-obj(32)-aux(0.1)-reduced/state_dict/best_val_unseen
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src_lstm/train.py $flag --name $name

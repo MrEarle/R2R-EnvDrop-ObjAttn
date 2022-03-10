@@ -243,22 +243,27 @@ for env_ids in SMALL_SPLITS.values():
 # args.obj_aux_task_weight = 0.1
 # args.dataset = "R2R"
 
+experiment = []
 if args.max_obj_number != 20:
-    args.name += f"-obj({args.max_obj_number})"
+    experiment.append(f"obj({args.max_obj_number})")
 if args.obj_aux_task:
-    args.name += f"-aux({args.obj_aux_task_weight})"
+    experiment.append(f"aux({args.obj_aux_task_weight})")
 if args.reduced_envs:
-    args.name += f"-reduced"
+    experiment.append(f"reduced")
+
+args.experiment = "_".join(experiment) or "default"
+
+args.save_dir = os.path.join(args.name, args.experiment)
 # * ====================================
 
 args.features_fast = "img_features/ResNet-152-imagenet-fast.tsv"
-args.log_dir = "snap/%s" % args.name
+args.log_dir = "snap/%s" % args.save_dir
 
 if not os.path.exists(args.log_dir):
     os.makedirs(args.log_dir)
-DEBUG_FILE = open(os.path.join("snap", args.name, "debug.log"), "w")
+DEBUG_FILE = open(os.path.join("snap", args.save_dir, "debug.log"), "w")
 args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {args.device}", flush=True)
 print(torch.cuda.get_device_properties(args.device), flush=True)
 
-print(f"\n\n\tTraining model {args.name}\n\n", flush=True)
+print(f"\n\n\tTraining model {args.name} in experiment {args.experiment}\n\n", flush=True)
