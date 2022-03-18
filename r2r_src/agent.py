@@ -993,7 +993,7 @@ class Seq2SeqAgent(BaseAgent):
             self.decoder_optimizer.step()
             self.critic_optimizer.step()
 
-    def save(self, epoch, path):
+    def save(self, epoch, acc, path):
         """Snapshot models"""
         the_dir, _ = os.path.split(path)
         os.makedirs(the_dir, exist_ok=True)
@@ -1002,6 +1002,7 @@ class Seq2SeqAgent(BaseAgent):
         def create_state(name, model, optimizer):
             states[name] = {
                 "epoch": epoch + 1,
+                "accuracy": acc,
                 "state_dict": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
             }
@@ -1015,7 +1016,7 @@ class Seq2SeqAgent(BaseAgent):
             create_state(*param)
         torch.save(states, path)
 
-    def load(self, path):
+    def load(self, path, return_acc=False):
         """Loads parameters (but not training state)"""
         states = torch.load(path)
 
@@ -1037,4 +1038,8 @@ class Seq2SeqAgent(BaseAgent):
         ]
         for param in all_tuple:
             recover_state(*param)
+
+        if return_acc:
+            best_val = states["encoder"]["accuracy"] if "accuracy" in states["encoder"] else None
+            return states["encoder"]["epoch"] - 1, best_val
         return states["encoder"]["epoch"] - 1

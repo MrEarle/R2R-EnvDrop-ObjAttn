@@ -29,6 +29,7 @@ flag="--attn soft --train listener
       --obj_aux_task
       --obj_aux_task_weight 0.1
       --reduced_envs
+      --dataset craft
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

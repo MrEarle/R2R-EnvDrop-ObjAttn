@@ -382,8 +382,10 @@ class R2RBatch:
         roi, orient_tensor, pos_tensor, obj_names = self.env.getViewpointObjects(scanId, viewpointId)
 
         original_orients_agent = orient_tensor.copy()
-        original_orients_agent[:, 0] -= agent_head
-        original_orients_agent[:, 1] -= agent_el
+        if len(original_orients_agent) > 0:
+            original_orients_agent[:, 0] -= agent_head
+            original_orients_agent[:, 1] -= agent_el
+
         orient_feat = np.array([utils.angle_feature(head, elev) for (head, elev) in original_orients_agent])
 
         obj_dict = {

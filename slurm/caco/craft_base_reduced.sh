@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=agent_base_reduced
+#SBATCH --job-name=craft_base_red
 #SBATCH --ntasks=1                  # Run only one task
-#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/agent_base_reduced-%j.log    # Output name (%j is replaced by job ID)
+#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/craft_base_red-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
 #SBATCH --nodelist=grievous
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
@@ -23,6 +23,7 @@ flag="--attn soft --train listener
       --feedback sample
       --mlWeight 0.2
       --reduced_envs
+      --dataset craft
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

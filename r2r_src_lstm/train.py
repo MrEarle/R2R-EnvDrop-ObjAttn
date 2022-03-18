@@ -40,7 +40,7 @@ warnings.filterwarnings("ignore")
 from tensorboardX import SummaryWriter
 
 
-log_dir = "snap/%s" % args.name
+log_dir = "snap/%s" % args.save_dir
 if not os.path.exists(log_dir):
     os.makedirs(log_dir)
 
@@ -157,16 +157,20 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
             speaker.load(args.speaker)
 
     start_iter = 0
+    best_val = None
     if args.load is not None:
         print("LOAD THE listener from %s" % args.load, flush=True)
-        start_iter = listner.load(os.path.join(args.load))
+        start_iter, best_val = listner.load(os.path.join(args.load))
+        print(f"Loaded listener on epoch {start_iter} with best val {best_val}", flush=True)
 
     start = time.time()
 
-    best_val = {
-        "val_seen": {"accu": 0.0, "state": "", "update": False},
-        "val_unseen": {"accu": 0.0, "state": "", "update": False},
-    }
+    if best_val is None:
+        best_val = {
+            "val_seen": {"accu": 0.0, "state": "", "update": False},
+            "val_unseen": {"accu": 0.0, "state": "", "update": False},
+        }
+
     if args.fast_train:
         log_every = 20
 
@@ -253,6 +257,7 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                 best_val[env_name]["update"] = False
                 listner.save(
                     idx,
+                    best_val,
                     os.path.join("snap", args.name, "state_dict", "best_%s" % (env_name)),
                 )
 
@@ -275,9 +280,9 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                 print(env_name, best_val[env_name]["state"], flush=True)
 
         if iter % 50000 == 0:
-            listner.save(idx, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
+            listner.save(idx, best_val, os.path.join("snap", args.name, "state_dict", "Iter_%06d" % (iter)))
 
-    listner.save(idx, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
+    listner.save(idx, best_val, os.path.join("snap", args.name, "state_dict", "LAST_iter%d" % (idx)))
 
 
 def valid(train_env, tok, val_envs={}):

@@ -192,6 +192,8 @@ class Param:
         self.parser.add_argument("--max_obj_number", type=int, default=20)
         self.parser.add_argument("--obj_aux_task", action="store_true")
         self.parser.add_argument("--obj_aux_task_weight", type=float, default=0.1)
+        self.parser.add_argument("--obj_label_task", action="store_true")
+        self.parser.add_argument("--obj_label_task_weight", type=float, default=0.1)
         self.parser.add_argument("--dataset", type=str, default="R2R")
         self.parser.add_argument("--include_objs", action="store_true")
         self.parser.add_argument("--include_objs_lstm", action="store_true")
@@ -224,7 +226,7 @@ args.CANDIDATE_FEATURES = "img_features/ResNet-152-candidate.tsv"
 # * ============= My Args ==============
 # args.OBJECT_FEATURES = "/home/mrearle/storage/img_features/ResNet-152-imagenet-conv.hdf5"
 # args.OBJECT_PROPOSALS = "/home/mrearle/storage/img_features/viewpoint_objects.h5"
-args.OBJECT_FEATURES = "/workspace1/mrearle/object_features.hdf5"
+args.OBJECT_FEATURES = "/workspace1/mrearle/object_features_filtered.hdf5"
 args.OBJECT_CLASS_FILE = "/workspace1/mrearle/object_classes.json"
 
 with open(args.OBJECT_CLASS_FILE, "r") as f:
@@ -244,6 +246,8 @@ for env_ids in SMALL_SPLITS.values():
 # args.dataset = "R2R"
 
 experiment = []
+if args.dataset.upper() != "R2R":
+    experiment.append(args.dataset)
 if args.max_obj_number != 20:
     experiment.append(f"obj({args.max_obj_number})")
 if args.obj_aux_task:

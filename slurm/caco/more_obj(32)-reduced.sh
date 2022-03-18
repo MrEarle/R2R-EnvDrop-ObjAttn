@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=more_obj-aux01
+#SBATCH --job-name=obj32-red
 #SBATCH --ntasks=1                  # Run only one task
-#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/more_obj-aux01-%j.log    # Output name (%j is replaced by job ID)
+#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/more_obj32-aux01-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
 #SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
@@ -26,9 +26,8 @@ flag="--attn soft --train listener
       --mlWeight 0.2
       --include_objs
       --max_obj_number 32
-      --obj_aux_task
-      --obj_aux_task_weight 0.1
       --reduced_envs
+      --dataset craft
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name
