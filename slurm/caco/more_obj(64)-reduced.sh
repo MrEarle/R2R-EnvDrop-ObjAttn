@@ -28,6 +28,7 @@ flag="--attn soft --train listener
       --max_obj_number 64
       --reduced_envs
       --dataset craft
+      --load /home/mrearle/repos/R2R-EnvDrop-ObjAttn/snap/obj/craft_obj(64)_reduced/state_dict/best_val_unseen
       --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

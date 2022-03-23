@@ -80,7 +80,7 @@ def load_datasets(splits):
         elif args.dataset.upper() == "RXR":
             base_path = "tasks/R2R/data/rxr_%s.json"
         elif args.dataset.upper() in ["CRAFT", "CRAFT_AUG"]:
-            if split in ["train, val_unseen"]:
+            if split in ["train", "val_unseen"]:
                 name = "R2R_craft_" if args.dataset.upper() == "CRAFT" else "R2R_aug_"
                 base_path = f"semantically_richer_instructions/{name}%s.json"
             else:

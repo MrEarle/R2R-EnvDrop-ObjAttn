@@ -75,18 +75,21 @@ def load_datasets(splits):
         # Load Json
         # if split in ['train', 'val_seen', 'val_unseen', 'test',
         #              'val_unseen_half1', 'val_unseen_half2', 'val_seen_half1', 'val_seen_half2']:       # Add two halves for sanity check
+
         if args.dataset.upper() == "R2R":
             base_path = "tasks/R2R/data/R2R_%s.json"
         elif args.dataset.upper() == "RXR":
             base_path = "tasks/R2R/data/rxr_%s.json"
         elif args.dataset.upper() in ["CRAFT", "CRAFT_AUG"]:
-            if split in ["train, val_unseen"]:
+            if split in ["train", "val_unseen"]:
                 name = "R2R_craft_" if args.dataset.upper() == "CRAFT" else "R2R_aug_"
                 base_path = f"semantically_richer_instructions/{name}%s.json"
             else:
                 base_path = "tasks/R2R/data/R2R_%s.json"
         else:
             raise NotImplementedError("Unknown dataset: %s" % args.dataset)
+
+        print(f"Using dataset {base_path % split} for split {split} (arg: {args.dataset})")
 
         if "/" not in split:
             with open(base_path % split) as f:

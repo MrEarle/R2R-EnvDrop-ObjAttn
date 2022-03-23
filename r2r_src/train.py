@@ -154,7 +154,7 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
     best_val = None
     if args.load is not None:
         print("LOAD THE listener from %s" % args.load, flush=True)
-        start_iter, best_val = listner.load(os.path.join(args.load))
+        start_iter, best_val = listner.load(os.path.join(args.load), return_acc=True)
         print(f"Loaded listener on epoch {start_iter} with best val {best_val}", flush=True)
 
     start = time.time()
