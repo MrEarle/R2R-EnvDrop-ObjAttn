@@ -6,6 +6,7 @@ def get_traj_result_iterator(object_attentions, viewpoint_attentions, env_idx=0)
     while True:
         if time_idx >= num_times:
             env_idx += 1
+            time_idx = 0
         if env_idx >= num_envs:
             raise StopIteration()
 
