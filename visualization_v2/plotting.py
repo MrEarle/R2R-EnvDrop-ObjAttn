@@ -10,11 +10,12 @@ from .visualization_utils import get_objects, get_panorama, visualize_panorama_i
 BBOX_STYLE = dict(boxstyle="round", fc="w", ec="0.5", alpha=0.1)
 
 
-def make_plots(info, viewpoint_attn, candidates, object_names, object_attention, instruction):
+def make_plots(info, viewpoint_attn, candidates, object_attention, instruction):
     plt.close("all")
+
     # 1. Plot agent current view with instruction and number-to-name mapping
     # Include object attention on shown objects.
-    idx_to_name = plot_view(
+    idx_to_name, object_data = plot_view(
         scan=info["scan"],
         viewpoint=info["viewpoint"],
         viewpoint_heading=info["heading"],
@@ -30,6 +31,9 @@ def make_plots(info, viewpoint_attn, candidates, object_names, object_attention,
     )
 
     # 2. Plot object attention map and viewpoint attention map
+    object_names_with_idx = [f"{object['category']} {object['idx']}" for object in object_data]
+    num_objs = sum(info["mask"])
+    object_names = [object_names_with_idx[i] for i in info["obj_sample"]][:num_objs]
     viewpoint_names = [idx_to_name[i] for i in candidates]
     plot_attentions(viewpoint_names, viewpoint_attn, object_names, object_attention)
 
@@ -120,11 +124,28 @@ def plot_view(
     view_ax.set_yticks(np.linspace(0, img_height - 1, 5), [-180, -90, 0, 90, 180])
 
     # Show objects
+    objects = {}  # { label: (x, y, color, attn) }
     for object in object_data:
         x, y = object["coord"]
-        x = (x + int(img_width * 0.75)) % img_width
-        view_ax.annotate(object["category"], (x + 15, y + 15), bbox=BBOX_STYLE, color="black")
-        view_ax.plot(x, y, marker="v", color=object["color"], linewidth=3)
+        obj_idx = object["idx"]
+        label = f"{object['category']} {obj_idx}"
+
+        if label not in objects:
+            objects[label] = (x, y, object["color"], object["attn"])
+        elif object["attn"] > objects[label][3]:
+            objects[label] = (x, y, object["color"], object["attn"])
+
+    for label, (x, y, color, _) in objects.items():
+        view_ax.annotate(label, (x + 15, y + 15), bbox=BBOX_STYLE, color="black")
+        view_ax.plot(x, y, marker="v", color=color, linewidth=3)
+
+    # for object in object_data:
+    #     x, y = object["coord"]
+    #     obj_idx = object["idx"]
+    #     label = f"{object['category']} {obj_idx}"
+    #     # x = (x + int(img_width * 0.75)) % img_width
+    #     view_ax.annotate(label, (x + 15, y + 15), bbox=BBOX_STYLE, color="black")
+    #     view_ax.plot(x, y, marker="v", color=object["color"], linewidth=3)
 
     # Show viewpoints
     idx_to_name = {}
@@ -142,7 +163,7 @@ def plot_view(
 
     plt.show()
     idx_to_name["STOP"] = "STOP"
-    return {name: idx for idx, name in idx_to_name.items()}
+    return {name: idx for idx, name in idx_to_name.items()}, object_data
 
 
 def insert_newlines(text, every=100):

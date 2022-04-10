@@ -243,6 +243,9 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                         if val > best_val[env_name]["accu"]:
                             best_val[env_name]["accu"] = val
                             best_val[env_name]["update"] = True
+
+                            listner.results_path = f"results/{args.save_dir}/best_{env_name}.json"
+                            listner.write_results()
                 loss_str += ", %s: %.3f" % (metric, val)
 
         for env_name in best_val:
@@ -254,6 +257,12 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                     best_val,
                     os.path.join("snap", args.save_dir, "state_dict", "best_%s" % (env_name)),
                 )
+
+        listner.save(
+            idx,
+            best_val,
+            os.path.join("snap", args.save_dir, "state_dict", "latest_iter"),
+        )
 
         print(
             (
@@ -277,6 +286,8 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
             listner.save(idx, best_val, os.path.join("snap", args.save_dir, "state_dict", "Iter_%06d" % (iter)))
 
     listner.save(idx, best_val, os.path.join("snap", args.save_dir, "state_dict", "LAST_iter%d" % (idx)))
+
+    return listner
 
 
 def valid(train_env, tok, val_envs={}):
@@ -310,6 +321,8 @@ def valid(train_env, tok, val_envs={}):
                 indent=4,
                 separators=(",", ": "),
             )
+
+    return agent
 
 
 def beam_valid(train_env, tok, val_envs={}):
@@ -486,7 +499,7 @@ def train_val():
         if args.beam:
             beam_valid(train_env, tok, val_envs=val_envs)
         else:
-            valid(train_env, tok, val_envs=val_envs)
+            return valid(train_env, tok, val_envs=val_envs)
     elif args.train == "speaker":
         train_speaker(train_env, tok, args.iters, val_envs=val_envs)
     elif args.train == "validspeaker":

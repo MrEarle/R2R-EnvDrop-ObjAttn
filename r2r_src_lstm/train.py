@@ -139,12 +139,6 @@ def train_speaker(train_env, tok, n_iters, log_every=500, val_envs={}):
             )
 
 
-def on_profile_step(p):
-    print("Profiling step!", flush=True)
-    print(p.key_averages().table(sort_by="self_cuda_time_total", row_limit=10), flush=True)
-    p.export_chrome_trace(f"trace_{args.name}_{p.step}.json")
-
-
 def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
     writer = SummaryWriter(logdir=log_dir)
     listner = Seq2SeqAgent(train_env, "", tok, args.maxAction)
@@ -249,6 +243,9 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                         if val > best_val[env_name]["accu"]:
                             best_val[env_name]["accu"] = val
                             best_val[env_name]["update"] = True
+
+                            listner.results_path = f"results/{args.save_dir}/best_{env_name}.json"
+                            listner.write_results()
                 loss_str += ", %s: %.3f" % (metric, val)
 
         for env_name in best_val:
@@ -260,6 +257,12 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
                     best_val,
                     os.path.join("snap", args.save_dir, "state_dict", "best_%s" % (env_name)),
                 )
+
+        listner.save(
+            idx,
+            best_val,
+            os.path.join("snap", args.save_dir, "state_dict", "latest_iter"),
+        )
 
         print(
             (

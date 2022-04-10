@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=more_obj-aux01
+#SBATCH --job-name=obj32-aux01-red
 #SBATCH --ntasks=1                  # Run only one task
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/more_obj-aux01-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=more_obj64-aux01
+#SBATCH --job-name=obj64-aux01
 #SBATCH --ntasks=1                  # Run only one task
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/more_obj64-aux01-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
@@ -30,6 +30,7 @@ flag="--attn soft --train listener
       --obj_aux_task_weight 0.1
       --reduced_envs
       --dataset craft
-      --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
+      --load snap/obj/craft_obj(64)_aux(0.1)_reduced/state_dict/latest_iter
+      --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 180000 --maxAction 35"
 mkdir -p snap/$name
 python r2r_src/train.py $flag --name $name

@@ -1,9 +1,9 @@
-from agent import Seq2SeqAgent
-from collections import defaultdict
 import os
+from collections import OrderedDict, defaultdict
+
 import h5py
-from collections import OrderedDict
-from train import setup, read_vocab, Tokenizer, TRAIN_VOCAB, read_img_features, R2RBatch, Evaluation
+import torch
+from r2r_src.train import train_val, TRAIN_VOCAB, Evaluation, R2RBatch, Tokenizer, read_vocab, setup
 from param import args
 
 log_dir = args.log_dir
@@ -11,39 +11,59 @@ FEATURE_FILE = "/home/mrearle/storage/img_features/ResNet-152-imagenet.hdf5"
 
 
 def load_args(
-    agent_name: str,
-    max_obj_number: int = 32,
+    base_name: str,
+    max_obj_number: int = 20,
     obj_aux_task: bool = True,
     include_objs: bool = True,
     reduced_envs: bool = True,
+    logging_vis: bool = False,
     dataset: str = "R2R",
 ):
-    # Model args
-    args.name = "py_default"
-    args.attn = "soft"
-    args.train = "validlistener"
+    args.accumulate_grad = False
     args.angle_feat_size = 128
-    args.accumulateGrad = True
-    args.featdropout = 0.4
-    args.subout = "max"
-    args.optim = "rms"
-    args.lr = 1e-4
-    args.iters = 10
+    args.attn = "soft"
+    args.featdropout = 0.3
+    args.feedback = "sample"
+    args.gamma = 0.9
+    args.ignoreid = -100
+    args.maxDecode = 120
+    args.maxInput = 80
+    args.sub_out = "max"
+    args.submit = False
+    args.train = "validlistener"
+    args.valid = False
+
+    args.obj_attn_type = "connection"
+    args.obj_aux_task_weight = 0.1
+    args.obj_label_task = False
+    args.obj_label_task_weight = 0.1
+    args.include_objs_lstm = False
     args.maxAction = 35
 
-    # Obj attn args
-    args.obj_attn_type = "connection"
+    args.include_objs = include_objs
     args.max_obj_number = max_obj_number
     args.obj_aux_task = obj_aux_task
-    args.obj_aux_task_weight = 0.1
-    args.include_objs = include_objs
-    args.include_objs_lstm = False
     args.reduced_envs = reduced_envs
-    args.buffer_objs = False
     args.dataset = dataset
+    args.logging_vis = logging_vis
 
-    # Required for visualization
-    args.logging_vis = True
+    args.name = base_name
+    experiment = []
+    if args.dataset.upper() != "R2R":
+        experiment.append(args.dataset)
+    if args.max_obj_number != 20:
+        experiment.append(f"obj({args.max_obj_number})")
+    if args.obj_aux_task:
+        experiment.append(f"aux({args.obj_aux_task_weight})")
+    if args.reduced_envs:
+        experiment.append(f"reduced")
+
+    args.experiment = "_".join(experiment) or "default"
+    args.save_dir = os.path.join(args.name, args.experiment)
+    args.log_dir = f"snap/{args.save_dir}"
+    args.load = f"snap/{args.save_dir}/state_dict/best_val_unseen"
+
+    print(args)
 
 
 def load_envs():
@@ -85,87 +105,83 @@ def load_envs():
     return train_env, val_envs, tok
 
 
-def setup_agent(train_env, tok, load):
+def setup_agent(attach_hooks=False):
+    print("Setup agent")
+    agent = train_val()
+    # agent = Seq2SeqAgent(train_env, "", tok, args.maxAction)
+
     object_attentions = []
-
-    def obj_attention_hook(model, input, output):
-        if model.traj_info is None:
-            return None
-
-        _, attentions, _ = output
-        traj_info = model.traj_info
-        attns = attentions.detach().cpu()
-        object_attentions.append((traj_info, attns))
-        model.traj_info = None
-
     viewpoint_attentions = []
+    if attach_hooks:
 
-    def view_attention_hook(model, input, output):
-        _, _, attn, _, _ = output
-        viewpoint_attentions.append(attn.detach().cpu())
+        def obj_attention_hook(model, input, output):
+            if model.traj_info is None:
+                return None
 
-    agent = Seq2SeqAgent(train_env, "", tok, args.maxAction)
+            _, attentions, _ = output
+            traj_info = model.traj_info
+            attns = attentions.detach().cpu()
+            object_attentions.append((traj_info, attns))
+            model.traj_info = None
 
-    agent.decoder.connectionwise_obj_attn.register_forward_hook(obj_attention_hook)
-    agent.decoder.register_forward_hook(view_attention_hook)
+        def view_attention_hook(model, input, output):
+            _, _, attn, _, _ = output
+            viewpoint_attentions.append(attn.detach().cpu())
 
-    args.load = load
-    print(
-        "Loaded the listener model at iter %d from %s" % (agent.load(args.load), args.load),
-        flush=True,
-    )
+        agent.decoder.connectionwise_obj_attn.register_forward_hook(obj_attention_hook)
+        agent.decoder.register_forward_hook(view_attention_hook)
+
+    # print("Load agent")
+    # args.load = load
+
+    # epoch, scores = agent.load(args.load, return_acc=True)
+
+    # print(f"Loaded agent from epoch {epoch} with scores {scores} from {args.load}")
 
     return agent, object_attentions, viewpoint_attentions
 
 
 def run_agent(agent, val_envs):
-    for env_name, (env, evaluator) in val_envs.items():
-        agent.logs = defaultdict(list)
-        agent.env = env
+    print("Run agent")
+    with torch.no_grad():
+        for env_name, (env, evaluator) in val_envs.items():
+            agent.logs = defaultdict(list)
+            agent.env = env
 
-        iters = None
-        agent.test(use_dropout=False, feedback="argmax", iters=1)
-        agent_result = agent.get_results()
+            iters = None
+            agent.test(use_dropout=False, feedback="argmax", iters=1)
+            agent_result = agent.get_results()
 
-        break
+            break
 
     return agent_result
 
 
 def setup_and_run_agent(
     base_name: str,
-    max_obj_number: int = 32,
+    max_obj_number: int = 20,
     obj_aux_task: bool = True,
     include_objs: bool = True,
     reduced_envs: bool = True,
     dataset: str = "R2R",
+    logging_vis: bool = False,
+    attach_hooks=False,
 ):
+    print("Parsing args")
     load_args(
+        base_name,
         max_obj_number=max_obj_number,
         obj_aux_task=obj_aux_task,
         include_objs=include_objs,
         reduced_envs=reduced_envs,
         dataset=dataset,
+        logging_vis=logging_vis,
     )
 
+    agent, obj_attns, view_attns = setup_agent(attach_hooks=attach_hooks)
 
-    train_env, val_envs, tok = load_envs()
-
-    experiment = []
-    if args.dataset.upper() != "R2R":
-        experiment.append(args.dataset)
-    if args.max_obj_number != 20:
-        experiment.append(f"obj({args.max_obj_number})")
-    if args.obj_aux_task:
-        experiment.append(f"aux({args.obj_aux_task_weight})")
-    if args.reduced_envs:
-        experiment.append(f"reduced")
-
-    args.experiment = "_".join(experiment) or "default"
-    args.save_dir = os.path.join(base_name, args.experiment)
-    load = f"snap/{base_name}/{args.experiment}/state_dict/best_val_unseen"
-    
-    agent, obj_attns, view_attns = setup_agent(train_env, tok, load)
+    print("Loading envs")
+    _, val_envs, _ = load_envs()
 
     agent_result = run_agent(agent, val_envs)
 

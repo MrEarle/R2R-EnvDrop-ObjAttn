@@ -265,6 +265,10 @@ args.log_dir = "snap/%s" % args.save_dir
 
 if not os.path.exists(args.log_dir):
     os.makedirs(args.log_dir)
+
+result_dir = f"results/{args.save_dir}"
+if not os.path.exists(result_dir):
+    os.makedirs(f"results/{args.save_dir}")
 DEBUG_FILE = open(os.path.join("snap", args.save_dir, "debug.log"), "w")
 args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {args.device}", flush=True)

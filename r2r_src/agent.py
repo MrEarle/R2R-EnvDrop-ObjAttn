@@ -130,9 +130,10 @@ class Seq2SeqAgent(BaseAgent):
         # Evaluations
         self.losses = []
         self.criterion = nn.CrossEntropyLoss(ignore_index=args.ignoreid, size_average=False)
+        self.obj_ingore_index = -100
         if args.obj_aux_task:
             self.obj_supervision_weight = args.obj_aux_task_weight
-            self.obj_supervision = nn.CrossEntropyLoss()
+            self.obj_supervision = nn.CrossEntropyLoss(ignore_index=self.obj_ingore_index)
 
         print("Listener: Done Instantiating Loss. Initializing Logs", flush=True)
         # Logs
@@ -170,7 +171,7 @@ class Seq2SeqAgent(BaseAgent):
 
         obj_feats = np.zeros((len(obs), max_objs, *obj_feat_shape), dtype=np.float32)
         obj_headings = np.zeros((len(obs), max_objs, angle_enc_size), dtype=np.float32)
-        obj_classes = np.zeros((len(obs), max_objs), dtype=np.int32)
+        obj_classes = np.full((len(obs), max_objs), self.obj_ingore_index, dtype=np.int32)
         mask = np.zeros((len(obs), max_objs), dtype=np.int32)
         sample_indices = np.zeros((len(obs), max_objs), dtype=np.int32)
 
