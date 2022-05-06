@@ -23,7 +23,8 @@ class ObjectFeatureReducer(nn.Module):
         )
 
         self.obj_encoder = nn.LazyLinear(object_dim)
-        self.obj_summarizer = nn.LazyLinear(output_dim)
+        if args.include_objs_lstm:
+            self.obj_summarizer = nn.LazyLinear(output_dim)
 
     def forward(self, obj_features: Tensor, obj_orients: Tensor) -> Tensor:
         """
@@ -52,8 +53,10 @@ class ObjectFeatureReducer(nn.Module):
 
         # Compute a representation of all objects in the scene
         # [batch, num_objs * object_dim]
-        object_summary = reduced_feats.view((o_shape[0], -1))
-        object_summary = self.obj_summarizer(object_summary)
+        object_summary = None
+        if args.include_objs_lstm:
+            object_summary = reduced_feats.view((o_shape[0], -1))
+            object_summary = self.obj_summarizer(object_summary)
 
         return reduced_feats, object_summary
 

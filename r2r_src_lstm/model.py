@@ -158,7 +158,7 @@ class AttnDecoderLSTM(nn.Module):
         self.drop_env = nn.Dropout(p=args.featdropout)
 
         self.lstm_in_size = embedding_size + feature_size
-        if args.include_objs:
+        if args.include_objs and args.include_objs_lstm:
             self.lstm_in_size += obj_attn_size
 
         self.lstm = nn.LSTMCell(self.lstm_in_size, hidden_size)
@@ -236,7 +236,9 @@ class AttnDecoderLSTM(nn.Module):
             # object_feats: [batch, num_objs, 1024]
             # object_summary: [batch, obj_attn_size]
             object_feats, object_summary = self.object_feat_reducer(obj_feats, obj_heads)
-            concat_input = torch.cat((concat_input, object_summary), 1)
+
+            if args.include_objs_lstm:
+                concat_input = torch.cat((concat_input, object_summary), 1)
 
             if args.obj_aux_task:
                 obj_scores = self.obj_aux_layer(object_feats)

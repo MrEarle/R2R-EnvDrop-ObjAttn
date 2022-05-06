@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=agent_base_reduced
+#SBATCH --job-name=agent_base_red
 #SBATCH --ntasks=1                  # Run only one task
 #SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/agent_base_reduced-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high

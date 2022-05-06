@@ -1028,6 +1028,7 @@ class Seq2SeqAgent(BaseAgent):
             if model_keys != load_keys:
                 print("NOTICE: DIFFERENT KEYS IN THE LISTEREN", model_keys.symmetric_difference(load_keys), flush=True)
             state.update(states[name]["state_dict"])
+            print(states["encoder"]["accuracy"] if "accuracy" in states["encoder"] else None)
             model.load_state_dict(state)
             if args.loadOptim:
                 optimizer.load_state_dict(states[name]["optimizer"])

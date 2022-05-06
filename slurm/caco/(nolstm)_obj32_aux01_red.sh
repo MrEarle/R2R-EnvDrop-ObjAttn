@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=pretrain-obj32-aux01
+#SBATCH --job-name=obj32-aux01-red
 #SBATCH --ntasks=1                  # Run only one task
-#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/pretrain-obj32-aux01-%j.log    # Output name (%j is replaced by job ID)
+#SBATCH --output=/home/mrearle/repos/R2R-EnvDrop-ObjAttn/slurm/logs/obj32-aux01-red-%j.log    # Output name (%j is replaced by job ID)
 #SBATCH --partition=ialab-high
 #SBATCH --nodelist=scylla
 #SBATCH --workdir=/home/mrearle/repos/R2R-EnvDrop-ObjAttn   # Where to run the job
@@ -18,7 +18,7 @@ source /home/mrearle/venvs/r2r/bin/activate
 export HDF5_USE_FILE_LOCKING="FALSE"
 echo "Starting agent training"
 # bash /home/mrearle/repos/R2R-EnvDrop-ObjAttn/run/agent_aux_01.bash 0
-name="craft_pretrain/obj"
+name="obj"
 flag="--attn soft --train listener
       --featdropout 0.3
       --angleFeatSize 128
@@ -29,8 +29,7 @@ flag="--attn soft --train listener
       --obj_aux_task
       --obj_aux_task_weight 0.1
       --reduced_envs
-      --dataset r2r
-      --load snap/craft_pretrain/obj/obj(32)_aux(0.1)_reduced/state_dict/latest_iter
-      --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 250000 --maxAction 35"
+      --dataset craft
+      --subout max --dropout 0.5 --optim rms --lr 1e-4 --iters 120000 --maxAction 35"
 mkdir -p snap/$name
-python r2r_src/train.py $flag --name $name
+python r2r_src_lstm/train.py $flag --name $name

@@ -3,8 +3,9 @@ from collections import OrderedDict, defaultdict
 
 import h5py
 import torch
-from r2r_src.train import train_val, TRAIN_VOCAB, Evaluation, R2RBatch, Tokenizer, read_vocab, setup
-from param import args
+from r2r_src_lstm.train import train_val, TRAIN_VOCAB, Evaluation, R2RBatch, Tokenizer, read_vocab, setup
+from r2r_src_lstm.param import args
+from r2r_src_lstm.agent import Seq2SeqAgent
 
 log_dir = args.log_dir
 FEATURE_FILE = "/home/mrearle/storage/img_features/ResNet-152-imagenet.hdf5"
@@ -62,9 +63,21 @@ def load_args(
     args.save_dir = os.path.join(args.name, args.experiment)
     args.log_dir = f"snap/{args.save_dir}"
     args.load = f"snap/{args.save_dir}/state_dict/best_val_unseen"
-    args.load = "/home/mrearle/repos/R2R-EnvDrop-ObjAttn/snap/agent_base-reduced/state_dict/best_val_unseen"
 
     print(args)
+
+
+def get_stuff():
+    train_env, val_envs, tok = load_envs()
+    agent = Seq2SeqAgent(train_env, "", tok, args.maxAction)
+
+    print(f"Loading from {args.load}")
+    iter, accs = agent.load(args.load, True)
+    print(
+        "Loaded the listener model at iter %d from %s" % (iter, args.load),
+        flush=True,
+    )
+    print(accs, flush=True)
 
 
 def load_envs():

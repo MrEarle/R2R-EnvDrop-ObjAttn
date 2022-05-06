@@ -291,10 +291,13 @@ def train(train_env, tok, n_iters, log_every=500, val_envs={}, aug_env=None):
 def valid(train_env, tok, val_envs={}):
     agent = Seq2SeqAgent(train_env, "", tok, args.maxAction)
 
+    print(f"Loading from {args.load}")
+    iter, accs = agent.load(args.load, True)
     print(
-        "Loaded the listener model at iter %d from %s" % (agent.load(args.load), args.load),
+        "Loaded the listener model at iter %d from %s" % (iter, args.load),
         flush=True,
     )
+    print(accs, flush=True)
 
     for env_name, (env, evaluator) in val_envs.items():
         agent.logs = defaultdict(list)
