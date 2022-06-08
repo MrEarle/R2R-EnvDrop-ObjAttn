@@ -7,7 +7,11 @@ def get_traj_result_iterator(object_attentions, viewpoint_attentions, env_idx=0)
         if time_idx >= num_times:
             env_idx += 1
             time_idx = 0
+
         if env_idx >= num_envs:
+            raise StopIteration()
+
+        if time_idx >= len(object_attentions):
             raise StopIteration()
 
         info = object_attentions[time_idx][0][env_idx]
@@ -67,3 +71,15 @@ def map_result(env_i, agent_results, hook_results, get_instruction):
         "agent_trajectory": trajectory,
         "instruction": instruction,
     }
+
+
+def map_result_trajectory(env_i, agent_results, result_iterator, get_instruction):
+    result_iterator.send(env_i)
+    result_iterator.send(-1)
+
+    while True:
+        try:
+            result = result_iterator.send(env_i)
+            yield map_result(env_i, agent_results, result, get_instruction)
+        except StopIteration:
+            break

@@ -316,6 +316,9 @@ def valid(train_env, tok, val_envs={}):
                 loss_str += ", %s: %.4f" % (metric, val)
             print(loss_str, flush=True)
 
+            agent.results_path = f"results/{args.save_dir}/train_{env_name}.json"
+            agent.write_results()
+
         if args.submit:
             json.dump(
                 result,

@@ -50,7 +50,7 @@ class BaseAgent(object):
     def get_agent(name):
         return globals()[name + "Agent"]
 
-    def test(self, iters=None, **kwargs):
+    def test(self, iters=None, result_path=None, **kwargs):
         self.env.reset_epoch(shuffle=(iters is not None))  # If iters is not none, shuffle the env batch
         self.losses = []
         self.results = {}
@@ -73,6 +73,9 @@ class BaseAgent(object):
                         self.results[traj["instr_id"]] = traj["path"]
                 if looped:
                     break
+            if result_path is not None:
+                self.results_path = result_path
+                self.write_results()
 
 
 class Seq2SeqAgent(BaseAgent):
@@ -915,7 +918,7 @@ class Seq2SeqAgent(BaseAgent):
             if looped:
                 break
 
-    def test(self, use_dropout=False, feedback="argmax", allow_cheat=False, iters=None):
+    def test(self, use_dropout=False, feedback="argmax", allow_cheat=False, iters=None, result_path=None):
         """Evaluate once on each instruction in the current environment"""
         self.feedback = feedback
         if use_dropout:
@@ -926,7 +929,7 @@ class Seq2SeqAgent(BaseAgent):
             self.encoder.eval()
             self.decoder.eval()
             self.critic.eval()
-        super(Seq2SeqAgent, self).test(iters)
+        super(Seq2SeqAgent, self).test(iters, result_path=result_path)
 
     def zero_grad(self):
         self.loss = 0.0

@@ -3,6 +3,7 @@ from collections import OrderedDict, defaultdict
 
 import h5py
 import torch
+from agent import Seq2SeqAgent
 from r2r_src.train import train_val, TRAIN_VOCAB, Evaluation, R2RBatch, Tokenizer, read_vocab, setup
 from param import args
 
@@ -62,7 +63,7 @@ def load_args(
     args.save_dir = os.path.join(args.name, args.experiment)
     args.log_dir = f"snap/{args.save_dir}"
     args.load = f"snap/{args.save_dir}/state_dict/best_val_unseen"
-    args.load = "/home/mrearle/repos/R2R-EnvDrop-ObjAttn/snap/agent_base-reduced/state_dict/best_val_unseen"
+    # args.load = "snap/obj/good/craft_obj(32)_aux(0.1)_reduced/state_dict/Iter_100000"
 
     print(args)
 
@@ -132,18 +133,12 @@ def setup_agent(attach_hooks=False):
         agent.decoder.connectionwise_obj_attn.register_forward_hook(obj_attention_hook)
         agent.decoder.register_forward_hook(view_attention_hook)
 
-    # print("Load agent")
-    # args.load = load
-
-    # epoch, scores = agent.load(args.load, return_acc=True)
-
-    # print(f"Loaded agent from epoch {epoch} with scores {scores} from {args.load}")
-
     return agent, object_attentions, viewpoint_attentions
 
 
 def run_agent(agent, val_envs):
     print("Run agent")
+
     with torch.no_grad():
         for env_name, (env, evaluator) in val_envs.items():
             agent.logs = defaultdict(list)
@@ -158,6 +153,21 @@ def run_agent(agent, val_envs):
     return agent_result
 
 
+def get_agent_results(agent: Seq2SeqAgent, val_envs, result_path):
+    print("Run agent")
+
+    with torch.no_grad():
+        for env_name, (env, evaluator) in val_envs.items():
+            print(env_name)
+            agent.logs = defaultdict(list)
+            agent.env = env
+
+            iters = None
+            agent.test(use_dropout=False, feedback="argmax", iters=iters, result_path=result_path)
+
+    return agent.get_results()
+
+
 def setup_and_run_agent(
     base_name: str,
     max_obj_number: int = 20,
@@ -167,6 +177,8 @@ def setup_and_run_agent(
     dataset: str = "R2R",
     logging_vis: bool = False,
     attach_hooks=False,
+    get_results=False,
+    result_path=None,
 ):
     print("Parsing args")
     load_args(
@@ -179,11 +191,14 @@ def setup_and_run_agent(
         logging_vis=logging_vis,
     )
 
-    agent, obj_attns, view_attns = setup_agent(attach_hooks=attach_hooks)
+    agent, obj_attns, view_attns = setup_agent(attach_hooks=attach_hooks and not get_results)
 
     print("Loading envs")
     _, val_envs, _ = load_envs()
 
-    agent_result = run_agent(agent, val_envs)
+    if get_results:
+        agent_result = get_agent_results(agent, val_envs, result_path)
+    else:
+        agent_result = run_agent(agent, val_envs)
 
     return agent_result, obj_attns, view_attns

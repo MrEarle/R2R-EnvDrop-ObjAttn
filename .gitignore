@@ -17,3 +17,5 @@ profile.ipynb
 build
 snap
 results/
+**/trajectories/
+slurm/

@@ -1,4 +1,5 @@
 from typing import Any, List
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -36,6 +37,45 @@ def make_plots(info, viewpoint_attn, candidates, object_attention, instruction):
     object_names = [object_names_with_idx[i] for i in info["obj_sample"]][:num_objs]
     viewpoint_names = [idx_to_name[i] for i in candidates]
     plot_attentions(viewpoint_names, viewpoint_attn, object_names, object_attention)
+
+
+def make_trajectory_plot(steps_iterator, save_path=None):
+    plt.close("all")
+
+    prev_viewpoint = None
+    for i, env_data in enumerate(steps_iterator):
+        instr_id = env_data["hook_info"]["instr_id"]
+        viewpoint = env_data["hook_info"]["viewpoint"]
+        if prev_viewpoint == viewpoint:
+            break
+
+        prev_viewpoint = viewpoint
+
+        info = env_data["hook_info"]
+        viewpoint_attn = env_data["view_attn"]
+        candidates = env_data["viewpoint_names"]
+        object_attention = env_data["object_attn"]
+        instruction = env_data["instruction"]
+
+        view_save_path = None
+        if save_path is not None:
+            view_save_path = os.path.join(save_path, f"{instr_id}_step_{i}.png")
+
+        plot_view_no_attention(
+            scan=info["scan"],
+            viewpoint=info["viewpoint"],
+            viewpoint_heading=info["heading"],
+            viewpoint_attn=viewpoint_attn,
+            viewpoint_indices=candidates,
+            agent_heading=info["heading"],
+            agent_elevation=info["elevation"],
+            object_names=info["objects"]["names"],
+            object_pos=info["objects"]["original_orient"],
+            object_attn=object_attention,
+            object_sample=info["obj_sample"].tolist(),
+            instruction=instruction,
+            save_path=view_save_path,
+        )
 
 
 def plot_attentions(viewpoint_indices, viewpoint_attn, obj_names, obj_attn):
@@ -161,6 +201,99 @@ def plot_view(
         text += f"{i} -> {view}\n"
     fig.text(0.1, 0.1, text, fontsize=16, wrap=True, verticalalignment="top")
 
+    plt.show()
+    idx_to_name["STOP"] = "STOP"
+    return {name: idx for idx, name in idx_to_name.items()}, object_data
+
+
+def insert_newlines(text, every=100):
+    words = text.split(" ")
+    lines = []
+    to_insert = []
+    curr_len = 0
+    for w in words:
+        to_insert.append(w)
+        curr_len += len(w)
+        if curr_len > every:
+            lines.append(" ".join(to_insert))
+            to_insert = []
+            curr_len = 0
+
+    if to_insert:
+        lines.append(" ".join(to_insert))
+    return "\n".join(lines)
+
+
+def plot_view_no_attention(
+    scan: str,
+    viewpoint: str,
+    viewpoint_heading: float,
+    viewpoint_attn: Any,
+    viewpoint_indices: Any,
+    agent_heading: float,
+    agent_elevation: float,
+    object_names: List[str],
+    object_pos: List[Any],
+    object_attn: Any,
+    object_sample: Any,
+    instruction: str,
+    save_path=None,
+):
+    _, reachable_viewpoints = get_objects(scan, viewpoint)
+
+    panorama = get_panorama(scan, viewpoint, viewpoint_heading)
+    img_height, img_width = panorama.shape[:2]
+
+    object_data = parse_objects(
+        agent_heading, agent_elevation, object_names, object_pos, object_attn, object_sample, img_height, img_width
+    )
+    viewpoint_data = parse_viewpoints(
+        reachable_viewpoints, viewpoint_attn, viewpoint_indices, agent_heading, agent_elevation, img_height, img_width
+    )
+
+    fig_width = 20
+    fig_height = fig_width * img_height / img_width
+    fig = plt.figure(figsize=(fig_width, fig_height))
+    view_ax = fig.add_axes((0, 0, 1, 1))
+
+    # Setup panorama image
+    view_ax.imshow(panorama)
+    # view_ax.set_xticks(np.linspace(0, img_width - 1, 5), [-180, -90, 0, 90, 180])
+    # view_ax.set_xlabel(f"relative heading from the agent")
+    # view_ax.set_yticks(np.linspace(0, img_height - 1, 5), [-180, -90, 0, 90, 180])
+
+    # Show objects
+    objects = {}  # { label: (x, y, color, attn) }
+    for object in object_data:
+        x, y = object["coord"]
+        obj_idx = object["idx"]
+        label = f"{object['category']} {obj_idx}"
+
+        if label not in objects:
+            objects[label] = (x, y, object["color"], object["attn"])
+        elif object["attn"] > objects[label][3]:
+            objects[label] = (x, y, object["color"], object["attn"])
+
+    for label, (x, y, _, _) in objects.items():
+        view_ax.annotate(label, (x + 15, y + 15), bbox=BBOX_STYLE, color="black")
+        view_ax.plot(x, y, marker="v", color="black", linewidth=3)
+
+    # Show viewpoints
+    idx_to_name = {}
+    for view in viewpoint_data:
+        x, y = view["coord"]
+        view_ax.annotate(view["index"], (x, y), bbox=BBOX_STYLE, color="black")
+        view_ax.plot(x, y, marker="o", color=view["color"], linewidth=1, markersize=50 / view["distance"])
+        idx_to_name[view["index"]] = view["name"]
+
+    # Add text
+    # text = f"Instruction:\n{insert_newlines(instruction)}\n\nIndex to Viewpoint:\n"
+    # for i, view in idx_to_name.items():
+    #     text += f"{i} -> {view}\n"
+    # fig.text(0.1, 0.1, text, fontsize=16, wrap=True, verticalalignment="top")
+
+    if save_path is not None:
+        plt.savefig(save_path)
     plt.show()
     idx_to_name["STOP"] = "STOP"
     return {name: idx for idx, name in idx_to_name.items()}, object_data
